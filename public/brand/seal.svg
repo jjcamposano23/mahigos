@@ -1,0 +1,12 @@
+<svg viewBox="0 0 120 128" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="UP Ibalon seal">
+  <!-- pointy-top hexagon -->
+  <path d="M60 4 L112 34 V94 L60 124 L8 94 V34 Z" stroke="#EF3422" stroke-width="6" stroke-linejoin="round"/>
+  <!-- nested Mayon chevron bars -->
+  <g fill="#EF3422">
+    <path d="M20 40 h30 l10 -8 l10 8 h30 v7 h-27 l-13 -10 l-13 10 h-27 z"/>
+    <path d="M20 52 h33 l7 -6 l7 6 h33 v7 h-30 l-10 -8 l-10 8 h-30 z"/>
+    <path d="M20 64 h36 l4 -4 l4 4 h36 v7 h-33 l-7 -6 l-7 6 h-33 z"/>
+    <rect x="20" y="76" width="80" height="8"/>
+  </g>
+  <text x="60" y="102" text-anchor="middle" font-family="Georgia, 'Source Serif Pro', serif" font-size="12" fill="#EF3422" letter-spacing="1">1974</text>
+</svg>

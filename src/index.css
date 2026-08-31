@@ -1,0 +1,148 @@
+@import 'tailwindcss';
+
+/* Class-based dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------ */
+/*  Brand + semantic design tokens                                    */
+/* ------------------------------------------------------------------ */
+:root {
+  /* UP Ibalon brand */
+  --brand: #ef3422; /* official saturated red */
+  --brand-ink: #c22417; /* darker red for text/hover on light */
+  --brand-soft: #fdece9; /* red tint surface */
+
+  /* Light theme surfaces (max 3 core neutrals + brand) */
+  --bg: #f6f5f3; /* warm paper */
+  --surface: #ffffff;
+  --surface-2: #f1efec;
+  --border: #e4e0da;
+  --text: #1c1a19;
+  --text-muted: #6b6660;
+
+  --ok: #2f8f6b; /* single supporting accent (green) */
+  --ring: rgba(239, 52, 34, 0.35);
+}
+
+:root.dark {
+  --brand: #ff4a38;
+  --brand-ink: #ff6b5c;
+  --brand-soft: #2a1512;
+
+  --bg: #141210;
+  --surface: #1d1a18;
+  --surface-2: #262220;
+  --border: #34302c;
+  --text: #f3efe9;
+  --text-muted: #a49d94;
+
+  --ok: #45b98d;
+  --ring: rgba(255, 74, 56, 0.4);
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-ink: var(--text);
+  --color-muted: var(--text-muted);
+  --color-ok: var(--ok);
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Poppins', 'Inter', sans-serif;
+  --font-serif: 'Source Serif 4', Georgia, serif;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Base                                                              */
+/* ------------------------------------------------------------------ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::selection {
+  background: var(--brand);
+  color: #fff;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Banig weave motif — subtle Bicol texture                          */
+/* ------------------------------------------------------------------ */
+.banig {
+  background-image: repeating-linear-gradient(
+      45deg,
+      var(--ring) 0 1px,
+      transparent 1px 14px
+    ),
+    repeating-linear-gradient(-45deg, var(--ring) 0 1px, transparent 1px 14px);
+  background-size: 20px 20px;
+}
+
+/* Concentric-diamond weave used on hero corners */
+.weave-corner {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--brand) 0 2px,
+    transparent 2px 10px
+  );
+  -webkit-mask-image: radial-gradient(closest-side, #000 0%, transparent 100%);
+  mask-image: radial-gradient(closest-side, #000 0%, transparent 100%);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Loading spinner ring                                              */
+/* ------------------------------------------------------------------ */
+@keyframes spin-ring {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.animate-spin-ring {
+  animation: spin-ring 1.15s linear infinite;
+}
+.animate-pulse-soft {
+  animation: pulse-soft 1.8s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-fade-in {
+  animation: fade-in 0.35s ease-out both;
+}
