@@ -34,9 +34,7 @@ export function LoadingScreen({ label = 'Loading Mahigos' }: { label?: string })
             />
           </svg>
           {/* seal */}
-          <span className="text-brand animate-pulse-soft">
-            <Seal size={68} />
-          </span>
+          <Seal size={64} variant="auto" className="animate-pulse-soft" />
         </div>
         <div className="text-center">
           <div className="font-display text-lg font-bold text-ink">{label}</div>
