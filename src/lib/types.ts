@@ -54,6 +54,65 @@ export interface Message {
   createdAt?: Timestamp
 }
 
+export interface Doc {
+  id: string
+  title: string
+  content: string // sanitized HTML
+  createdBy: string
+  updatedBy?: string
+  updatedByName?: string
+  updatedAt?: Timestamp
+  createdAt?: Timestamp
+}
+
+export interface DocVersion {
+  id: string
+  content: string
+  savedBy: string
+  savedByName: string
+  savedAt?: Timestamp
+}
+
+export interface DocComment {
+  id: string
+  text: string
+  quote?: string
+  authorUid: string
+  authorName: string
+  authorAvatar?: string | null
+  resolved?: boolean
+  createdAt?: Timestamp
+}
+
+export interface Whiteboard {
+  id: string
+  title: string
+  createdBy: string
+  updatedAt?: Timestamp
+  createdAt?: Timestamp
+}
+
+export interface BoardNote {
+  id: string
+  x: number
+  y: number
+  w: number
+  h: number
+  text: string
+  color: string
+  authorUid: string
+}
+
+export const NOTE_COLORS = ['#ffe08a', '#ffd0c7', '#c9ecd0', '#c7ddff', '#e6d2ff', '#ffffff']
+
+export interface BoardCursor {
+  x: number
+  y: number
+  name: string
+  color: string
+  updatedAt?: Timestamp
+}
+
 export type TaskStatus = 'backlog' | 'todo' | 'doing' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 

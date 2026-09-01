@@ -49,6 +49,22 @@ service cloud.firestore {
       }
     }
 
+    // Collaborative documents + versions / comments / presence
+    match /documents/{docId} {
+      allow read, create, update, delete: if isAllowed();
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if isAllowed();
+      }
+    }
+
+    // Whiteboards + notes / cursors
+    match /whiteboards/{boardId} {
+      allow read, create, update, delete: if isAllowed();
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if isAllowed();
+      }
+    }
+
     // Shared calendar events
     match /events/{eventId} {
       allow read, create, update, delete: if isAllowed();
