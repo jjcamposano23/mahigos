@@ -2,6 +2,14 @@ import type { Timestamp } from 'firebase/firestore'
 
 export type Role = 'admin' | 'member'
 
+export interface ScheduleBlock {
+  day: number // 0 = Sun … 6 = Sat
+  start: string // 'HH:MM' 24h
+  end: string // 'HH:MM'
+  title: string // subject / class code
+  room?: string
+}
+
 export interface UserProfile {
   uid: string
   email: string
@@ -11,6 +19,11 @@ export interface UserProfile {
   photoURL?: string // uploaded avatar image
   avatar?: string // preset Bicol avatar id (see AVATAR_PRESETS)
   mustChangePassword?: boolean
+  // Student Assistant details (from UP Form 5)
+  program?: string
+  college?: string
+  studentNo?: string
+  schedule?: ScheduleBlock[]
   createdAt?: Timestamp
 }
 

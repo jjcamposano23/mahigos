@@ -8,6 +8,7 @@ import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Tasks } from './pages/Tasks'
 import { Calendar } from './pages/Calendar'
+import { Team } from './pages/Team'
 import { Settings } from './pages/Settings'
 import { ComingSoon } from './pages/ComingSoon'
 
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/calendar" element={<Calendar />} />
+          <Route path="/team" element={<Team />} />
           <Route
             path="/messages"
             element={
