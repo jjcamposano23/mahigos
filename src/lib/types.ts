@@ -24,6 +24,33 @@ export interface UserProfile {
   college?: string
   studentNo?: string
   schedule?: ScheduleBlock[]
+  lastActive?: Timestamp
+  createdAt?: Timestamp
+}
+
+export interface Channel {
+  id: string
+  name: string
+  description?: string
+  kind: 'channel' | 'dm'
+  members?: string[] // uids (for DMs)
+  memberNames?: string[]
+  createdBy: string
+  order?: number
+  createdAt?: Timestamp
+}
+
+export interface Message {
+  id: string
+  text: string
+  authorUid: string
+  authorName: string
+  authorAvatar?: string | null
+  authorPhotoURL?: string | null
+  parentId?: string | null // set for thread replies
+  replyCount?: number
+  clipUrl?: string | null
+  clipType?: 'audio' | 'video' | null
   createdAt?: Timestamp
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Menu, X, Mail, Shield, Briefcase, ChevronDown } from 'lucide-react'
 import { Sidebar } from './Sidebar'
@@ -6,12 +6,18 @@ import { ThemeToggle } from '../../components/ThemeToggle'
 import { Avatar } from '../../components/Avatar'
 import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
+import { startPresence } from '../../lib/presence'
 
 export function AppShell() {
-  const { profile, logout } = useAuth()
+  const { user, profile, logout } = useAuth()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const name = profile?.displayName ?? 'Member'
+
+  useEffect(() => {
+    if (!user) return
+    return startPresence(user.uid)
+  }, [user])
 
   return (
     <div className="flex h-full">

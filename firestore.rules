@@ -41,6 +41,14 @@ service cloud.firestore {
       allow read, create, update, delete: if isAllowed();
     }
 
+    // Channels + direct messages, with their message subcollection
+    match /channels/{channelId} {
+      allow read, create, update, delete: if isAllowed();
+      match /messages/{messageId} {
+        allow read, create, update, delete: if isAllowed();
+      }
+    }
+
     // Shared calendar events
     match /events/{eventId} {
       allow read, create, update, delete: if isAllowed();

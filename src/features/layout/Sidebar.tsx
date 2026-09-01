@@ -27,7 +27,7 @@ const items: Item[] = [
   { to: '/tasks', label: 'Tasks', icon: KanbanSquare },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/team', label: 'Team', icon: Users },
-  { to: '/messages', label: 'Messages', icon: MessagesSquare, soon: true },
+  { to: '/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/docs', label: 'Documents', icon: FileText, soon: true },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool, soon: true },
   { to: '/calls', label: 'Calls', icon: Video, soon: true },

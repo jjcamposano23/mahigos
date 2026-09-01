@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { MessagesSquare, FileText, PenTool, Video } from 'lucide-react'
+import { FileText, PenTool, Video } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import { LoadingScreen } from './components/LoadingScreen'
 import { RequireAuth } from './features/auth/RequireAuth'
@@ -9,6 +9,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Tasks } from './pages/Tasks'
 import { Calendar } from './pages/Calendar'
 import { Team } from './pages/Team'
+import { Messages } from './pages/Messages'
 import { Settings } from './pages/Settings'
 import { ComingSoon } from './pages/ComingSoon'
 
@@ -31,17 +32,7 @@ export default function App() {
           <Route path="/tasks" element={<Tasks />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/team" element={<Team />} />
-          <Route
-            path="/messages"
-            element={
-              <ComingSoon
-                title="Messages"
-                icon={MessagesSquare}
-                phase="Phase 3"
-                blurb="Channels, threads, and direct messages with real-time presence and async voice/video clips."
-              />
-            }
-          />
+          <Route path="/messages" element={<Messages />} />
           <Route
             path="/docs"
             element={
