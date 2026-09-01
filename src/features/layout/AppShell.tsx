@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Menu, X, Mail, Shield, Briefcase, ChevronDown } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { Avatar } from '../../components/Avatar'
+import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
-import { pickBicolPhoto } from '../../lib/photos'
 
 export function AppShell() {
   const { profile, logout } = useAuth()
@@ -79,7 +79,6 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   const { profile, logout } = useAuth()
   const navigate = useNavigate()
   const name = profile?.displayName ?? 'Member'
-  const photo = useMemo(() => pickBicolPhoto(), [])
 
   const rows = [
     { icon: Mail, label: 'Email', value: profile?.email },
@@ -91,13 +90,13 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-start justify-end p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative z-10 mt-14 w-full max-w-xs animate-rise overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
-        {/* photo header (a Bicol landmark) so the avatar doesn't merge into flat red */}
-        <div className="relative h-20">
-          <img src={photo.src} alt={photo.label} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-b from-brand/70 to-black/60 mix-blend-multiply" />
+        {/* solid red header with subtle 2D Bicol vector art */}
+        <div className="relative h-16 overflow-hidden bg-brand">
+          <div className="banig absolute inset-0 opacity-20" />
+          <BicolSkyline className="absolute bottom-0 h-9 w-full text-white/20" />
         </div>
-        <div className="px-5 pb-5">
-          <div className="-mt-9 mb-3">
+        <div className="relative px-5 pb-5">
+          <div className="relative z-10 -mt-8 mb-3 w-max">
             <Avatar
               profile={profile}
               size={64}
