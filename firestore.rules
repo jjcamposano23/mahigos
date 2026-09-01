@@ -36,6 +36,11 @@ service cloud.firestore {
       allow read, create, update, delete: if isAllowed();
     }
 
+    // Projects / boards
+    match /projects/{projectId} {
+      allow read, create, update, delete: if isAllowed();
+    }
+
     // Shared calendar events
     match /events/{eventId} {
       allow read, create, update, delete: if isAllowed();

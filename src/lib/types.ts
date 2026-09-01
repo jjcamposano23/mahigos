@@ -17,6 +17,12 @@ export interface UserProfile {
 export type TaskStatus = 'backlog' | 'todo' | 'doing' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 
+export interface Subtask {
+  id: string
+  text: string
+  done: boolean
+}
+
 export interface Task {
   id: string
   title: string
@@ -26,11 +32,57 @@ export interface Task {
   assigneeUid?: string | null
   assigneeName?: string | null
   dueDate?: string | null // ISO date
+  projectId?: string | null
+  labels?: string[] // label ids (see LABELS)
+  subtasks?: Subtask[]
   order: number
   createdBy: string
+  completedAt?: Timestamp | null
   createdAt?: Timestamp
   updatedAt?: Timestamp
 }
+
+export interface Project {
+  id: string
+  name: string
+  color: string
+  order: number
+  createdBy: string
+  createdAt?: Timestamp
+}
+
+export const PROJECT_COLORS = [
+  '#ef3422',
+  '#2f6df0',
+  '#2f8f6b',
+  '#e8a33d',
+  '#8b5cf6',
+  '#0ea5a4',
+  '#d8371f',
+  '#6b7280',
+]
+
+export interface LabelDef {
+  id: string
+  name: string
+  color: string
+}
+
+// Curated org tags. Tasks may carry several.
+export const LABELS: LabelDef[] = [
+  { id: 'events', name: 'Events', color: '#ef3422' },
+  { id: 'finance', name: 'Finance', color: '#2f8f6b' },
+  { id: 'membership', name: 'Membership', color: '#2f6df0' },
+  { id: 'comms', name: 'Comms', color: '#e8a33d' },
+  { id: 'docs', name: 'Documentation', color: '#8b5cf6' },
+  { id: 'research', name: 'Research', color: '#0ea5a4' },
+  { id: 'outreach', name: 'Outreach', color: '#db2777' },
+  { id: 'logistics', name: 'Logistics', color: '#6b7280' },
+]
+
+export const LABEL_MAP: Record<string, LabelDef> = Object.fromEntries(
+  LABELS.map((l) => [l.id, l]),
+)
 
 export const STATUS_COLUMNS: { key: TaskStatus; label: string }[] = [
   { key: 'backlog', label: 'Backlog' },
