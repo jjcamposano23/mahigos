@@ -2,31 +2,46 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function signedIn() {
-      return request.auth != null;
+    // Only these authorized UP Ibalon accounts may access any data.
+    function allowedEmails() {
+      return [
+        'jjcamposano23@gmail.com',
+        'upiaaosec@gmail.com',
+        'gbbrutas@up.edu.ph',
+        'ivmancenido@up.edu.ph'
+      ];
+    }
+
+    function isAllowed() {
+      return request.auth != null
+        && request.auth.token.email != null
+        && request.auth.token.email.lower() in allowedEmails();
     }
 
     function isAdmin() {
-      return signedIn()
+      return isAllowed()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
-    // User profiles: anyone signed in can read the roster;
-    // a user may write their own profile; admins may write anyone's.
+    // User profiles
     match /users/{uid} {
-      allow read: if signedIn();
-      allow create: if signedIn() && request.auth.uid == uid;
-      allow update, delete: if request.auth.uid == uid || isAdmin();
+      allow read: if isAllowed();
+      allow create: if isAllowed() && request.auth.uid == uid;
+      allow update, delete: if isAllowed() && (request.auth.uid == uid || isAdmin());
     }
 
-    // Tasks: shared workspace board for all signed-in members.
+    // Shared task board
     match /tasks/{taskId} {
-      allow read, create, update: if signedIn();
-      allow delete: if signedIn();
+      allow read, create, update, delete: if isAllowed();
     }
 
-    // Default deny for everything else.
+    // Shared calendar events
+    match /events/{eventId} {
+      allow read, create, update, delete: if isAllowed();
+    }
+
+    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }

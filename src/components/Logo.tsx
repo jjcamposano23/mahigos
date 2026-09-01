@@ -67,12 +67,12 @@ export function Wordmark({ compact = false }: { compact?: boolean }) {
     <div className="flex items-center gap-2.5 select-none">
       <Seal size={compact ? 30 : 36} />
       {!compact && (
-        <div className="leading-none">
-          <div className="font-display text-[1.35rem] font-extrabold tracking-tight text-ink">
+        <div className="flex flex-col justify-center">
+          <div className="font-display text-[1.35rem] font-extrabold leading-none tracking-tight text-ink">
             Mahigos
           </div>
-          <div className="text-[0.6rem] font-semibold uppercase tracking-[0.18em] text-muted">
-            UP Ibalon &middot; OSEC
+          <div className="mt-1 text-[0.6rem] font-semibold uppercase leading-none tracking-[0.16em] text-muted">
+            UP Ibalon
           </div>
         </div>
       )}

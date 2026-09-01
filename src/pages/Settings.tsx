@@ -103,6 +103,16 @@ export function Settings() {
           </button>
         </form>
       </section>
+
+      <section className="mt-4 rounded-xl border border-border bg-surface p-5">
+        <h2 className="font-display text-lg font-semibold text-ink">About</h2>
+        <p className="mt-2 text-sm text-muted">
+          Mahigos is the collaboration workspace of the UP Ibalon Alumni Association, Inc.
+        </p>
+        <p className="mt-2 text-xs text-muted">
+          Mayon Volcano photo by ShmilyDigital, via Wikimedia Commons (CC BY-SA 4.0).
+        </p>
+      </section>
     </div>
   )
 }

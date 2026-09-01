@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
+import { isAllowedEmail } from '../lib/access'
 import type { UserProfile } from '../lib/types'
 
 interface AuthCtx {
   user: User | null
   profile: UserProfile | null
   loading: boolean
+  authError: string | null
+  clearAuthError: () => void
   logout: () => Promise<void>
 }
 
@@ -15,6 +18,8 @@ const Ctx = createContext<AuthCtx>({
   user: null,
   profile: null,
   loading: true,
+  authError: null,
+  clearAuthError: () => {},
   logout: async () => {},
 })
 
@@ -22,17 +27,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   useEffect(() => {
     return onAuthStateChanged(auth, async (u) => {
+      // Enforce the sign-in allowlist.
+      if (u && !isAllowedEmail(u.email)) {
+        setAuthError(
+          'This account is not authorized for Mahigos. Access is limited to UP Ibalon Alumni Association members.',
+        )
+        await signOut(auth)
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
       setUser(u)
       if (u) {
+        setAuthError(null)
         const ref = doc(db, 'users', u.uid)
         const snap = await getDoc(ref)
         if (snap.exists()) {
           setProfile({ uid: u.uid, ...(snap.data() as Omit<UserProfile, 'uid'>) })
         } else {
-          // Bootstrap a profile the first time a user signs in
           const fresh: Omit<UserProfile, 'createdAt'> = {
             uid: u.uid,
             email: u.email ?? '',
@@ -53,7 +71,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signOut(auth)
   }
 
-  return <Ctx.Provider value={{ user, profile, loading, logout }}>{children}</Ctx.Provider>
+  return (
+    <Ctx.Provider
+      value={{
+        user,
+        profile,
+        loading,
+        authError,
+        clearAuthError: () => setAuthError(null),
+        logout,
+      }}
+    >
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

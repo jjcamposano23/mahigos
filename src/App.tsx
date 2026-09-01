@@ -7,6 +7,7 @@ import { AppShell } from './features/layout/AppShell'
 import { Login } from './pages/Login'
 import { Dashboard } from './pages/Dashboard'
 import { Tasks } from './pages/Tasks'
+import { Calendar } from './pages/Calendar'
 import { Settings } from './pages/Settings'
 import { ComingSoon } from './pages/ComingSoon'
 
@@ -27,6 +28,7 @@ export default function App() {
         >
           <Route path="/" element={<Dashboard />} />
           <Route path="/tasks" element={<Tasks />} />
+          <Route path="/calendar" element={<Calendar />} />
           <Route
             path="/messages"
             element={
@@ -45,7 +47,7 @@ export default function App() {
                 title="Documents"
                 icon={FileText}
                 phase="Phase 4"
-                blurb="Real-time co-editing, version history, and in-file comments for your OSEC documents."
+                blurb="Real-time co-editing, version history, and in-file comments for the association's documents."
               />
             }
           />

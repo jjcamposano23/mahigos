@@ -45,3 +45,23 @@ export const PRIORITY_META: Record<TaskPriority, { label: string; dot: string }>
   high: { label: 'High', dot: '#e8a33d' },
   urgent: { label: 'Urgent', dot: '#ef3422' },
 }
+
+export type EventType = 'meeting' | 'deadline' | 'event' | 'reminder'
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  date: string // ISO yyyy-mm-dd
+  time?: string | null // HH:mm
+  type: EventType
+  notes?: string
+  createdBy: string
+  createdAt?: Timestamp
+}
+
+export const EVENT_META: Record<EventType, { label: string; color: string }> = {
+  meeting: { label: 'Meeting', color: '#2f6df0' },
+  deadline: { label: 'Deadline', color: '#ef3422' },
+  event: { label: 'Event', color: '#2f8f6b' },
+  reminder: { label: 'Reminder', color: '#e8a33d' },
+}

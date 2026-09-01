@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   KanbanSquare,
+  CalendarDays,
   MessagesSquare,
   FileText,
   PenTool,
@@ -10,6 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Wordmark } from '../../components/Logo'
+import { MiniCalendar } from '../../components/MiniCalendar'
 import { MayonRange } from '../../components/BicolMotifs'
 
 interface Item {
@@ -22,6 +24,7 @@ interface Item {
 const items: Item[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/tasks', label: 'Tasks', icon: KanbanSquare },
+  { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/messages', label: 'Messages', icon: MessagesSquare, soon: true },
   { to: '/docs', label: 'Documents', icon: FileText, soon: true },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool, soon: true },
@@ -35,7 +38,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <Wordmark />
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="space-y-1 px-3">
         {items.map(({ to, label, icon: Icon, soon }) => (
           <NavLink
             key={to}
@@ -51,7 +54,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
               ].join(' ')
             }
           >
-            <Icon size={18} className="shrink-0" />
+            <Icon size={18} className="shrink-0 transition-transform group-hover:scale-110" />
             <span className="flex-1">{label}</span>
             {soon && (
               <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[0.55rem] font-semibold uppercase tracking-wide text-muted">
@@ -62,7 +65,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         ))}
       </nav>
 
-      <div className="px-3 pb-2">
+      <div className="mt-4 flex-1 overflow-y-auto px-3">
+        <MiniCalendar />
+      </div>
+
+      <div className="px-3 pb-2 pt-2">
         <NavLink
           to="/settings"
           onClick={onNavigate}

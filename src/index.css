@@ -146,3 +146,63 @@ body {
 .animate-fade-in {
   animation: fade-in 0.35s ease-out both;
 }
+
+/* Rise = fade + lift, used for hero copy and entering cards */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise {
+  animation: rise 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Gentle hover lift for cards and tiles */
+.hover-lift {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px -12px rgba(0, 0, 0, 0.35);
+}
+
+/* Staggered entrance for lists of cards */
+.stagger > * {
+  animation: rise 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.07s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.12s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.17s;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 0.22s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise,
+  .animate-fade-in,
+  .animate-spin-ring,
+  .animate-pulse-soft,
+  .stagger > * {
+    animation: none !important;
+  }
+  .hover-lift:hover {
+    transform: none;
+  }
+}

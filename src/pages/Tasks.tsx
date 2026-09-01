@@ -165,7 +165,7 @@ export function Tasks() {
                     onDragStart={() => setDragId(t.id)}
                     onDragEnd={() => setDragId(null)}
                     onClick={() => setSelected(t)}
-                    className={`w-full cursor-grab rounded-lg border border-border bg-surface p-3 text-left shadow-sm transition hover:border-brand/40 active:cursor-grabbing ${
+                    className={`hover-lift w-full cursor-grab rounded-lg border border-border bg-surface p-3 text-left shadow-sm transition hover:border-brand/40 active:cursor-grabbing ${
                       dragId === t.id ? 'opacity-50' : ''
                     }`}
                   >

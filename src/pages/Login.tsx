@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -7,6 +7,7 @@ import {
   type AuthError,
 } from 'firebase/auth'
 import { auth } from '../lib/firebase'
+import { useAuth } from '../context/AuthContext'
 import { Seal } from '../components/Logo'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { Butanding, Mayon } from '../components/BicolMotifs'
@@ -31,20 +32,30 @@ function friendlyError(code: string): string {
 }
 
 export function Login() {
+  const { authError, clearAuthError } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Surface allowlist rejections coming from the auth context.
+  useEffect(() => {
+    if (authError) setError(authError)
+  }, [authError])
+
+  const resetMsgs = () => {
     setError(null)
     setNotice(null)
+    clearAuthError()
+  }
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    resetMsgs()
     setBusy(true)
     try {
       await signInWithEmailAndPassword(auth, email.trim(), password)
-      // AuthProvider + router handle redirect
     } catch (err) {
       setError(friendlyError((err as AuthError).code))
     } finally {
@@ -53,8 +64,7 @@ export function Login() {
   }
 
   const google = async () => {
-    setError(null)
-    setNotice(null)
+    resetMsgs()
     setBusy(true)
     try {
       await signInWithPopup(auth, new GoogleAuthProvider())
@@ -73,7 +83,7 @@ export function Login() {
       setError('Enter your email first, then tap “Forgot password”.')
       return
     }
-    setError(null)
+    resetMsgs()
     try {
       await sendPasswordResetEmail(auth, email.trim())
       setNotice('Password reset link sent. Check your inbox.')
@@ -84,25 +94,37 @@ export function Login() {
 
   return (
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-      {/* Brand panel */}
-      <div className="relative hidden overflow-hidden bg-brand lg:block">
-        <div className="banig absolute inset-0 opacity-20" />
+      {/* Brand panel — real Mayon photo with a brand-red colour filter */}
+      <div className="relative hidden overflow-hidden lg:block">
+        <img
+          src="/photos/mayon.jpg"
+          alt="Mayon Volcano, Bicol"
+          className="absolute inset-0 h-full w-full scale-105 object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-brand/85 via-brand/70 to-black/85 mix-blend-multiply" />
+        <div className="absolute inset-0 bg-black/25" />
+        <div className="banig absolute inset-0 opacity-10" />
+
         <div className="relative flex h-full flex-col justify-between p-12 text-white">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 animate-fade-in">
             <Seal size={40} variant="white" />
             <span className="font-display text-2xl font-extrabold tracking-tight">Mahigos</span>
           </div>
+
           <div className="max-w-md">
-            <h1 className="font-display text-4xl font-extrabold leading-tight">
-              One workspace for the Ibalon mission.
+            <h1 className="font-display text-4xl font-extrabold leading-tight [animation-delay:80ms] animate-rise">
+              One workspace for the UP Ibalon mission.
             </h1>
-            <p className="mt-4 text-white/85">
-              Plan projects, track tasks, and collaborate — built for the UP Ibalon Alumni
-              Association Office of the Secretary.
+            <p className="mt-4 text-lg font-medium text-white/90 [animation-delay:180ms] animate-rise">
+              Plan projects, track tasks, and collaborate.
+            </p>
+            <p className="mt-3 max-w-sm text-sm text-white/75 [animation-delay:260ms] animate-rise">
+              A workspace collaboration tool for the UP Ibalon Alumni Association.
             </p>
           </div>
+
           <div className="flex items-center gap-6 text-white/70">
-            <Mayon size={44} className="text-white/80" />
+            <Mayon size={44} className="text-white/85" />
             <Butanding size={64} className="text-white/70" />
             <span className="text-xs uppercase tracking-[0.25em]">Est. 1974 &middot; Bikol</span>
           </div>
@@ -114,7 +136,7 @@ export function Login() {
         <div className="absolute right-4 top-4">
           <ThemeToggle />
         </div>
-        <div className="w-full max-w-sm animate-fade-in">
+        <div className="w-full max-w-sm animate-rise">
           <div className="mb-8 flex flex-col items-center lg:hidden">
             <Seal size={52} variant="auto" />
             <div className="mt-2 font-display text-2xl font-extrabold text-ink">Mahigos</div>
@@ -151,12 +173,12 @@ export function Login() {
             </label>
 
             {error && (
-              <div className="rounded-lg border border-brand/30 bg-brand-soft px-3 py-2 text-sm text-brand-ink">
+              <div className="animate-rise rounded-lg border border-brand/30 bg-brand-soft px-3 py-2 text-sm text-brand-ink">
                 {error}
               </div>
             )}
             {notice && (
-              <div className="rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok">
+              <div className="animate-rise rounded-lg border border-ok/40 bg-ok/10 px-3 py-2 text-sm text-ok">
                 {notice}
               </div>
             )}
@@ -164,7 +186,7 @@ export function Login() {
             <button
               type="submit"
               disabled={busy}
-              className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-60"
+              className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-ink hover:shadow-md active:scale-[0.99] disabled:opacity-60"
             >
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
@@ -179,7 +201,7 @@ export function Login() {
               type="button"
               onClick={google}
               disabled={busy}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface py-2.5 text-sm font-semibold text-ink transition hover:border-brand/40 disabled:opacity-60"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface py-2.5 text-sm font-semibold text-ink transition hover:border-brand/40 active:scale-[0.99] disabled:opacity-60"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden>
                 <path
@@ -212,7 +234,7 @@ export function Login() {
           </form>
 
           <p className="mt-8 text-center text-xs text-muted">
-            UP Ibalon Alumni Association, Inc. &middot; Office of the Secretary
+            UP Ibalon Alumni Association, Inc.
           </p>
         </div>
       </div>
