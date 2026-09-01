@@ -1,19 +1,11 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { LogOut, Menu, X, Mail, Shield, Briefcase, ChevronDown } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from '../../components/ThemeToggle'
+import { Avatar } from '../../components/Avatar'
 import { useAuth } from '../../context/AuthContext'
-
-function initials(name: string) {
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
-}
+import { pickBicolPhoto } from '../../lib/photos'
 
 export function AppShell() {
   const { profile, logout } = useAuth()
@@ -54,9 +46,7 @@ export function AppShell() {
             onClick={() => setProfileOpen(true)}
             className="flex items-center gap-2 rounded-lg border border-border bg-surface py-1 pl-1 pr-2 transition hover:border-brand/40"
           >
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-brand text-xs font-bold text-white">
-              {initials(name)}
-            </span>
+            <Avatar profile={profile} size={28} />
             <span className="hidden text-left leading-tight sm:block">
               <span className="block text-xs font-semibold text-ink">{name}</span>
               <span className="block text-[0.65rem] capitalize text-muted">
@@ -89,6 +79,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
   const { profile, logout } = useAuth()
   const navigate = useNavigate()
   const name = profile?.displayName ?? 'Member'
+  const photo = useMemo(() => pickBicolPhoto(), [])
 
   const rows = [
     { icon: Mail, label: 'Email', value: profile?.email },
@@ -100,13 +91,19 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 flex items-start justify-end p-4">
       <div className="absolute inset-0 bg-black/30" onClick={onClose} />
       <div className="relative z-10 mt-14 w-full max-w-xs animate-rise overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
-        {/* brand header */}
-        <div className="relative h-20 bg-brand">
-          <div className="banig absolute inset-0 opacity-20" />
+        {/* photo header (a Bicol landmark) so the avatar doesn't merge into flat red */}
+        <div className="relative h-20">
+          <img src={photo.src} alt={photo.label} className="h-full w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-b from-brand/70 to-black/60 mix-blend-multiply" />
         </div>
         <div className="px-5 pb-5">
-          <div className="-mt-8 mb-3 grid h-16 w-16 place-items-center rounded-2xl border-4 border-surface bg-brand text-xl font-bold text-white">
-            {initials(name)}
+          <div className="-mt-9 mb-3">
+            <Avatar
+              profile={profile}
+              size={64}
+              rounded="rounded-2xl"
+              className="border-4 border-surface shadow-md"
+            />
           </div>
           <h2 className="font-display text-lg font-bold text-ink">{name}</h2>
           <p className="text-xs text-muted">UP Ibalon Alumni Association</p>

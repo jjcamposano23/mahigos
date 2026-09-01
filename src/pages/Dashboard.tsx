@@ -8,6 +8,7 @@ import type { CalendarEvent, Task } from '../lib/types'
 import { EVENT_META } from '../lib/types'
 import { bikolGreeting, WELCOME } from '../lib/bikol'
 import { toISO } from '../lib/dates'
+import { daySeed, pickBicolPhoto } from '../lib/photos'
 
 export function Dashboard() {
   const { profile } = useAuth()
@@ -48,15 +49,16 @@ export function Dashboard() {
     { label: 'Completed', value: done, icon: CheckCircle2 },
   ]
 
-  const firstName = (profile?.displayName ?? 'Ibalonon').split(' ')[0]
+  const firstName = (profile?.displayName ?? 'Ibaloney').split(' ')[0]
+  const photo = pickBicolPhoto(daySeed())
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
       {/* Hero — real Mayon photo with brand-red colour filter */}
       <div className="relative overflow-hidden rounded-2xl">
         <img
-          src="/photos/mayon.jpg"
-          alt="Mayon Volcano"
+          src={photo.src}
+          alt={photo.label}
           className="absolute inset-0 h-full w-full scale-105 object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-brand/90 via-brand/75 to-black/70 mix-blend-multiply" />
@@ -74,6 +76,9 @@ export function Dashboard() {
             workspace of the UP Ibalon Alumni Association.
           </p>
         </div>
+        <span className="absolute bottom-3 right-4 z-10 rounded-full bg-black/30 px-2.5 py-1 text-[0.65rem] font-medium text-white/90 backdrop-blur-sm">
+          {photo.label} &middot; {photo.place}
+        </span>
       </div>
 
       {/* Stats */}

@@ -164,11 +164,12 @@ export function Calendar() {
           })}
         </div>
 
-        {/* Day agenda for selected/added date */}
+        {/* Day dialog: schedule for the selected date + add */}
         {addFor && (
-          <EventModal
+          <DayDialog
             date={addFor}
             events={events.filter((e) => e.date === addFor)}
+            tasksDue={tasks.filter((t) => t.dueDate === addFor && t.status !== 'done')}
             onClose={() => setAddFor(null)}
             onDelete={removeEvent}
             onAdd={async (payload) => {
@@ -185,23 +186,25 @@ export function Calendar() {
   )
 }
 
-function EventModal({
+function DayDialog({
   date,
   events,
+  tasksDue,
   onClose,
   onAdd,
   onDelete,
 }: {
   date: string
   events: CalendarEvent[]
+  tasksDue: Task[]
   onClose: () => void
   onAdd: (p: Omit<CalendarEvent, 'id' | 'createdBy' | 'createdAt'>) => Promise<void>
   onDelete: (id: string) => void
 }) {
+  const [mode, setMode] = useState<'view' | 'add'>('view')
   const [title, setTitle] = useState('')
   const [time, setTime] = useState('')
   const [type, setType] = useState<EventType>('meeting')
-  const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
 
   const pretty = new Date(date + 'T00:00:00').toLocaleDateString(undefined, {
@@ -211,14 +214,17 @@ function EventModal({
     year: 'numeric',
   })
 
+  const isEmpty = events.length === 0 && tasksDue.length === 0
+
   const save = async () => {
     if (!title.trim()) return
     setBusy(true)
-    await onAdd({ title: title.trim(), date, time: time || null, type, notes: notes.trim() })
+    await onAdd({ title: title.trim(), date, time: time || null, type, notes: '' })
     setTitle('')
     setTime('')
-    setNotes('')
+    setType('meeting')
     setBusy(false)
+    setMode('view')
   }
 
   return (
@@ -227,7 +233,9 @@ function EventModal({
       <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="font-display text-lg font-bold text-ink">Schedule</h2>
+            <h2 className="font-display text-lg font-bold text-ink">
+              {mode === 'add' ? 'Add schedule' : 'Schedule'}
+            </h2>
             <p className="text-xs text-muted">{pretty}</p>
           </div>
           <button onClick={onClose} className="text-muted hover:text-ink">
@@ -235,66 +243,104 @@ function EventModal({
           </button>
         </div>
 
-        {events.length > 0 && (
-          <ul className="mt-4 space-y-1.5">
-            {events.map((e) => (
-              <li
-                key={e.id}
-                className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2"
-              >
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full"
-                  style={{ background: EVENT_META[e.type].color }}
-                />
-                <span className="flex-1 text-sm text-ink">{e.title}</span>
-                {e.time && <span className="text-xs text-muted">{e.time}</span>}
-                <button
-                  onClick={() => onDelete(e.id)}
-                  className="text-muted transition hover:text-brand"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        {mode === 'view' ? (
+          <>
+            <div className="mt-4 space-y-1.5">
+              {isEmpty && (
+                <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted">
+                  Nothing scheduled for this day yet.
+                </p>
+              )}
 
-        <div className="mt-4 space-y-3 border-t border-border pt-4">
-          <input
-            autoFocus
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && save()}
-            placeholder="Add a meeting, deadline, or reminder…"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as EventType)}
-              className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
-            >
-              {Object.entries(EVENT_META).map(([k, v]) => (
-                <option key={k} value={k}>
-                  {v.label}
-                </option>
+              {events.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2"
+                >
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ background: EVENT_META[e.type].color }}
+                  />
+                  <span className="flex-1 text-sm text-ink">{e.title}</span>
+                  <span className="text-[0.7rem] uppercase tracking-wide text-muted">
+                    {EVENT_META[e.type].label}
+                  </span>
+                  {e.time && <span className="text-xs text-muted">{e.time}</span>}
+                  <button
+                    onClick={() => onDelete(e.id)}
+                    className="text-muted transition hover:text-brand"
+                    title="Delete"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
-            </select>
+
+              {tasksDue.map((t) => (
+                <div
+                  key={t.id}
+                  className="flex items-center gap-2 rounded-lg border border-border bg-bg px-3 py-2"
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-muted" />
+                  <span className="flex-1 text-sm text-ink">{t.title}</span>
+                  <span className="text-[0.7rem] uppercase tracking-wide text-muted">Task due</span>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setMode('add')}
+              className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink active:scale-[0.99]"
+            >
+              <Plus size={16} /> Add schedule
+            </button>
+          </>
+        ) : (
+          <div className="mt-4 space-y-3">
             <input
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-              className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && save()}
+              placeholder="Meeting, deadline, holiday, reminder…"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
             />
+            <div className="grid grid-cols-2 gap-3">
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as EventType)}
+                className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+              >
+                {Object.entries(EVENT_META).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setMode('view')}
+                className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-ink transition hover:border-brand/40"
+              >
+                Back
+              </button>
+              <button
+                onClick={save}
+                disabled={busy || !title.trim()}
+                className="flex-1 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink active:scale-[0.99] disabled:opacity-50"
+              >
+                {busy ? 'Adding…' : 'Add to calendar'}
+              </button>
+            </div>
           </div>
-          <button
-            onClick={save}
-            disabled={busy || !title.trim()}
-            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink active:scale-[0.99] disabled:opacity-50"
-          >
-            {busy ? 'Adding…' : 'Add to calendar'}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )

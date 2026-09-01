@@ -13,6 +13,7 @@ import {
 import { Plus, X, Trash2, CalendarDays } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
+import { Avatar } from '../components/Avatar'
 import {
   PRIORITY_META,
   STATUS_COLUMNS,
@@ -21,17 +22,6 @@ import {
   type TaskStatus,
   type UserProfile,
 } from '../lib/types'
-
-function initials(name?: string | null) {
-  if (!name) return '?'
-  return name
-    .split(' ')
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
-}
 
 export function Tasks() {
   const { profile } = useAuth()
@@ -63,6 +53,11 @@ export function Tasks() {
       unsubU()
     }
   }, [])
+
+  const memberMap = useMemo(
+    () => Object.fromEntries(members.map((m) => [m.uid, m])),
+    [members],
+  )
 
   const byStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -190,11 +185,16 @@ export function Tasks() {
                         <span />
                       )}
                       {t.assigneeName && (
-                        <span
-                          title={t.assigneeName}
-                          className="grid h-5 w-5 place-items-center rounded-full bg-brand text-[0.6rem] font-bold text-white"
-                        >
-                          {initials(t.assigneeName)}
+                        <span title={t.assigneeName}>
+                          <Avatar
+                            profile={
+                              (t.assigneeUid && memberMap[t.assigneeUid]) || {
+                                displayName: t.assigneeName,
+                              }
+                            }
+                            size={20}
+                            rounded="rounded-full"
+                          />
                         </span>
                       )}
                     </div>

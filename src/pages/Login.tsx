@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -10,7 +10,7 @@ import { auth } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { Seal } from '../components/Logo'
 import { ThemeToggle } from '../components/ThemeToggle'
-import { Butanding, Mayon } from '../components/BicolMotifs'
+import { pickBicolPhoto } from '../lib/photos'
 
 function friendlyError(code: string): string {
   switch (code) {
@@ -38,6 +38,7 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const photo = useMemo(() => pickBicolPhoto(), [])
 
   // Surface allowlist rejections coming from the auth context.
   useEffect(() => {
@@ -97,21 +98,21 @@ export function Login() {
       {/* Brand panel — real Mayon photo with a brand-red colour filter */}
       <div className="relative hidden overflow-hidden lg:block">
         <img
-          src="/photos/mayon.jpg"
-          alt="Mayon Volcano, Bicol"
+          src={photo.src}
+          alt={`${photo.label}, ${photo.place}`}
           className="absolute inset-0 h-full w-full scale-105 object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-brand/85 via-brand/70 to-black/85 mix-blend-multiply" />
         <div className="absolute inset-0 bg-black/25" />
         <div className="banig absolute inset-0 opacity-10" />
 
-        <div className="relative flex h-full flex-col justify-between p-12 text-white">
+        <div className="relative flex h-full flex-col p-12 text-white">
           <div className="flex items-center gap-3 animate-fade-in">
             <Seal size={40} variant="white" />
             <span className="font-display text-2xl font-extrabold tracking-tight">Mahigos</span>
           </div>
 
-          <div className="max-w-md">
+          <div className="mt-auto max-w-md">
             <h1 className="font-display text-4xl font-extrabold leading-tight [animation-delay:80ms] animate-rise">
               One workspace for the UP Ibalon mission.
             </h1>
@@ -121,12 +122,6 @@ export function Login() {
             <p className="mt-3 max-w-sm text-sm text-white/75 [animation-delay:260ms] animate-rise">
               A workspace collaboration tool for the UP Ibalon Alumni Association.
             </p>
-          </div>
-
-          <div className="flex items-center gap-6 text-white/70">
-            <Mayon size={44} className="text-white/85" />
-            <Butanding size={64} className="text-white/70" />
-            <span className="text-xs uppercase tracking-[0.25em]">Est. 1974 &middot; Bikol</span>
           </div>
         </div>
       </div>

@@ -11,6 +11,7 @@ interface AuthCtx {
   loading: boolean
   authError: string | null
   clearAuthError: () => void
+  updateProfile: (patch: Partial<UserProfile>) => Promise<void>
   logout: () => Promise<void>
 }
 
@@ -20,6 +21,7 @@ const Ctx = createContext<AuthCtx>({
   loading: true,
   authError: null,
   clearAuthError: () => {},
+  updateProfile: async () => {},
   logout: async () => {},
 })
 
@@ -67,6 +69,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
   }, [])
 
+  const updateProfile = async (patch: Partial<UserProfile>) => {
+    if (!user) return
+    await setDoc(doc(db, 'users', user.uid), patch, { merge: true })
+    setProfile((p) => (p ? { ...p, ...patch } : p))
+  }
+
   const logout = async () => {
     await signOut(auth)
   }
@@ -79,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         authError,
         clearAuthError: () => setAuthError(null),
+        updateProfile,
         logout,
       }}
     >

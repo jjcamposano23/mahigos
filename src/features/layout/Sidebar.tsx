@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { Wordmark } from '../../components/Logo'
 import { MiniCalendar } from '../../components/MiniCalendar'
-import { MayonRange } from '../../components/BicolMotifs'
+import { BicolSkyline } from '../../components/BicolMotifs'
 
 interface Item {
   to: string
@@ -86,7 +86,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="relative h-14 overflow-hidden text-brand/25">
-        <MayonRange className="absolute bottom-0 h-14 w-full" />
+        <BicolSkyline className="absolute bottom-0 h-14 w-full" />
       </div>
     </aside>
   )
