@@ -72,7 +72,8 @@ exports.createZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
     throw new HttpsError('invalid-argument', 'A topic and start time are required.')
   }
   const token = await zoomToken()
-  const res = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+  // S2S OAuth has no user context, so target the OSEC host by email (not "me").
+  const res = await fetch(`https://api.zoom.us/v2/users/${encodeURIComponent(SENDER)}/meetings`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
