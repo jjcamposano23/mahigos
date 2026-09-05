@@ -27,21 +27,25 @@ import {
   Triangle,
   SquareRoundCorner,
   Image as ImageIcon,
+  Palette,
   Loader2,
   X,
 } from 'lucide-react'
 import { db, storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { isOnline } from '../../lib/presence'
-import { mentionTargets, notifyMentions } from '../../lib/notifications'
+import { mentionTargets, notifyMentions, type MentionTarget } from '../../lib/notifications'
 import {
-  NOTE_COLORS,
-  STROKE_COLORS,
+  BOARD_FONTS,
+  BOARD_FONT_SIZES,
   type BoardCursor,
   type BoardItem,
   type BoardItemType,
   type UserProfile,
 } from '../../lib/types'
+import { ColorPopover } from './ColorPopover'
+
+const safeId = (c: string) => 'c' + c.replace(/[^a-z0-9]/gi, '')
 
 type Tool = 'select' | BoardItemType
 
@@ -129,6 +133,7 @@ export function Canvas({ boardId }: { boardId: string }) {
   const [library, setLibrary] = useState(false)
   const [members, setMembers] = useState<UserProfile[]>([])
   const [uploading, setUploading] = useState(false)
+  const [colorOpen, setColorOpen] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const it = useRef<Interaction>(null)
@@ -155,18 +160,29 @@ export function Canvas({ boardId }: { boardId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, user])
 
-  // Save text and fan out @mention notifications.
-  const commitText = (id: string, text: string) => {
+  // Live-save text on every change so it's never lost when clicking away.
+  const editTextRef = useRef<Record<string, string>>({})
+  const onChangeText = (id: string, text: string) => {
+    editTextRef.current[id] = text
     patch(id, { text })
-    setEditingId(null)
-    if (text.trim())
-      void notifyMentions(text, targets, {
-        fromUid: user?.uid ?? '',
-        fromName: profile?.displayName ?? 'Member',
-        context: 'on a whiteboard',
-        link: '/whiteboard',
-      })
   }
+  // When an edit session ends, fan out @mention notifications for that item.
+  const prevEditing = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = prevEditing.current
+    if (prev && prev !== editingId) {
+      const t = editTextRef.current[prev]
+      if (t && t.trim())
+        void notifyMentions(t, targets, {
+          fromUid: user?.uid ?? '',
+          fromName: profile?.displayName ?? 'Member',
+          context: 'on a whiteboard',
+          link: '/whiteboard',
+        })
+    }
+    prevEditing.current = editingId
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId])
 
   const uploadImage = async (file: File) => {
     if (!file || !user) return
@@ -412,10 +428,9 @@ export function Canvas({ boardId }: { boardId: string }) {
   }, [sel, editingId])
 
   const selArr = items.filter((i) => sel.has(i.id))
-  const paletteFor =
-    selArr.length && selArr.every((i) => i.type === 'text' || CONNECTORS.includes(i.type))
-      ? STROKE_COLORS
-      : NOTE_COLORS
+  const first = selArr[0]
+  const textLike =
+    selArr.length > 0 && selArr.every((i) => !CONNECTORS.includes(i.type) && i.type !== 'image')
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -440,10 +455,56 @@ export function Canvas({ boardId }: { boardId: string }) {
         {selArr.length > 0 && (
           <>
             <span className="mx-1 h-6 w-px bg-border" />
-            {paletteFor.map((c) => (
-              <button key={c} onClick={() => selArr.forEach((s) => patch(s.id, { color: c }))}
-                className="h-5 w-5 rounded-full border border-black/10 transition hover:scale-110" style={{ background: c }} />
-            ))}
+
+            {/* Font + size for text-bearing items */}
+            {textLike && (
+              <>
+                <select
+                  value={first?.fontFamily ?? BOARD_FONTS[0].value}
+                  onChange={(e) => selArr.forEach((s) => patch(s.id, { fontFamily: e.target.value }))}
+                  title="Font"
+                  className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
+                  style={{ fontFamily: first?.fontFamily ?? BOARD_FONTS[0].value }}
+                >
+                  {BOARD_FONTS.map((f) => (
+                    <option key={f.label} value={f.value} style={{ fontFamily: f.value }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={first?.fontSize ?? (first?.type === 'text' ? 16 : 14)}
+                  onChange={(e) => selArr.forEach((s) => patch(s.id, { fontSize: Number(e.target.value) }))}
+                  title="Font size"
+                  className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
+                >
+                  {BOARD_FONT_SIZES.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
+
+            {/* Color */}
+            <div className="relative">
+              <button
+                onClick={() => setColorOpen((v) => !v)}
+                title="Color"
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink"
+              >
+                <Palette size={16} />
+              </button>
+              {colorOpen && (
+                <ColorPopover
+                  value={first?.color ?? '#1c1a19'}
+                  onChange={(c) => selArr.forEach((s) => patch(s.id, { color: c }))}
+                  onClose={() => setColorOpen(false)}
+                />
+              )}
+            </div>
+
             <button onClick={() => del([...sel])} title="Delete"
               className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand">
               <Trash2 size={16} />
@@ -479,8 +540,8 @@ export function Canvas({ boardId }: { boardId: string }) {
           {/* connectors */}
           <svg className="pointer-events-none absolute overflow-visible" width={1} height={1}>
             <defs>
-              {STROKE_COLORS.map((c) => (
-                <marker key={c} id={`ar-${c.replace('#', '')}`} markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+              {[...new Set(items.filter((i) => CONNECTORS.includes(i.type)).map((i) => i.color))].map((c) => (
+                <marker key={c} id={`ar-${safeId(c)}`} markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
                   <path d="M0,0 L7,3 L0,6 Z" fill={c} />
                 </marker>
               ))}
@@ -488,7 +549,7 @@ export function Canvas({ boardId }: { boardId: string }) {
             {items.filter((i) => CONNECTORS.includes(i.type)).map((a) => (
               <g key={a.id}>
                 <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-move" onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)} />
-                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={2.5} markerEnd={a.type === 'arrow' ? `url(#ar-${a.color.replace('#', '')})` : undefined} />
+                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={2.5} markerEnd={a.type === 'arrow' ? `url(#ar-${safeId(a.color)})` : undefined} />
                 {sel.has(a.id) && (
                   <>
                     <circle cx={a.x} cy={a.y} r={6} fill="#fff" stroke="var(--brand)" strokeWidth={2} className="pointer-events-auto cursor-crosshair" onPointerDown={(e) => { e.stopPropagation(); it.current = { mode: 'endpoint', id: a.id, which: 'start' } }} />
@@ -504,9 +565,11 @@ export function Canvas({ boardId }: { boardId: string }) {
 
           {items.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
             <ItemView key={item.id} item={item} selected={sel.has(item.id)} editing={editingId === item.id} zoom={zoom}
+              targets={targets}
               onPointerDown={(e) => startMove(e, item)}
               onDoubleClick={() => { if (item.type === 'image') return; setSel(new Set([item.id])); setEditingId(item.id) }}
-              onCommit={(text) => commitText(item.id, text)}
+              onChangeText={(text) => onChangeText(item.id, text)}
+              onEndEdit={() => setEditingId(null)}
               onResize={(e, h) => startResize(e, item, h)} />
           ))}
 
@@ -562,19 +625,66 @@ function ShapeLibrary({ onPick, onClose }: { onPick: (t: BoardItemType) => void;
 }
 
 function ItemView({
-  item, selected, editing, zoom, onPointerDown, onDoubleClick, onCommit, onResize,
+  item, selected, editing, zoom, targets, onPointerDown, onDoubleClick, onChangeText, onEndEdit, onResize,
 }: {
   item: BoardItem
   selected: boolean
   editing: boolean
   zoom: number
+  targets: MentionTarget[]
   onPointerDown: (e: React.PointerEvent) => void
   onDoubleClick: () => void
-  onCommit: (text: string) => void
+  onChangeText: (text: string) => void
+  onEndEdit: () => void
   onResize: (e: React.PointerEvent, h: Handle) => void
 }) {
   const isText = item.type === 'text'
   const isImage = item.type === 'image'
+  const [val, setVal] = useState(item.text ?? '')
+  const [mq, setMq] = useState<string | null>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => {
+    if (editing) setVal(item.text ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
+  const font = item.fontFamily
+  const size = item.fontSize ?? (isText ? 16 : 14)
+  const textStyle: React.CSSProperties = {
+    color: isText ? item.color : 'rgba(0,0,0,.8)',
+    fontFamily: font,
+    fontSize: size,
+  }
+
+  const suggestions =
+    mq !== null
+      ? targets.filter((t) => t.handle.toLowerCase().startsWith(mq.toLowerCase())).slice(0, 5)
+      : []
+  const recompute = (text: string, pos: number) => {
+    const m = text.slice(0, pos).match(/@([a-z0-9]*)$/i)
+    setMq(m ? m[1] : null)
+  }
+  const change = (text: string, pos: number) => {
+    setVal(text)
+    onChangeText(text)
+    recompute(text, pos)
+  }
+  const insertMention = (handle: string) => {
+    const el = taRef.current
+    const pos = el ? el.selectionStart : val.length
+    const before = val.slice(0, pos).replace(/@([a-z0-9]*)$/i, `@${handle} `)
+    const nv = before + val.slice(pos)
+    setVal(nv)
+    onChangeText(nv)
+    setMq(null)
+    requestAnimationFrame(() => {
+      if (el) {
+        el.focus()
+        el.selectionStart = el.selectionEnd = before.length
+      }
+    })
+  }
+
   const style: React.CSSProperties = { left: item.x, top: item.y, width: item.w, height: item.h }
   const inner: React.CSSProperties = {}
   let cls = 'overflow-hidden'
@@ -610,14 +720,35 @@ function ItemView({
           className="pointer-events-none absolute inset-0 h-full w-full object-contain"
         />
       ) : editing ? (
-        <textarea autoFocus defaultValue={item.text}
-          onBlur={(e) => onCommit(e.target.value)}
-          onPointerDown={(e) => e.stopPropagation()}
-          className="relative z-10 h-full w-full resize-none select-text bg-transparent px-2 py-1 text-center text-sm outline-none"
-          style={{ color: isText ? item.color : 'rgba(0,0,0,.8)' }} />
+        <>
+          <textarea ref={taRef} autoFocus value={val}
+            onChange={(e) => change(e.target.value, e.target.selectionStart)}
+            onKeyUp={(e) => recompute(e.currentTarget.value, e.currentTarget.selectionStart)}
+            onBlur={() => { setTimeout(() => setMq(null), 150); onEndEdit() }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="relative z-10 h-full w-full resize-none select-text bg-transparent px-2 py-1 text-center outline-none"
+            style={textStyle} />
+          {suggestions.length > 0 && (
+            <div
+              className="absolute left-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-lg border border-border bg-surface text-left shadow-xl"
+              style={{ transform: `scale(${1 / zoom})`, transformOrigin: 'top left' }}
+            >
+              {suggestions.map((t) => (
+                <button
+                  key={t.uid}
+                  onMouseDown={(e) => { e.preventDefault(); insertMention(t.handle) }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-sm text-ink transition hover:bg-surface-2"
+                >
+                  <span className="font-semibold text-brand">@{t.handle}</span>
+                  <span className="truncate text-xs text-muted">{t.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
-        <span className={`relative z-10 whitespace-pre-wrap px-2 text-sm ${isText ? 'font-medium' : ''} ${!item.text ? 'opacity-40' : ''}`}
-          style={{ color: isText ? item.color : 'rgba(0,0,0,.8)' }}>
+        <span className={`relative z-10 whitespace-pre-wrap px-2 ${isText ? 'font-medium' : ''} ${!item.text ? 'opacity-40' : ''}`}
+          style={textStyle}>
           {item.text || (isText ? 'Text' : '')}
         </span>
       )}

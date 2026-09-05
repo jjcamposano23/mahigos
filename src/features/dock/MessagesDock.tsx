@@ -185,6 +185,7 @@ export function MessagesDock() {
           />
         </div>
         <Composer
+          targets={targets}
           placeholder={
             selected.kind === 'dm'
               ? `Message ${dmOther?.displayName ?? ''} · @ to tag`

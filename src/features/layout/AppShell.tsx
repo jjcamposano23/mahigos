@@ -8,6 +8,7 @@ import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
 import { startPresence } from '../../lib/presence'
 import { NotificationBell } from '../notifications/NotificationBell'
+import { OnlineToaster } from '../notifications/OnlineToaster'
 import { RightDock } from '../dock/RightDock'
 
 export function AppShell() {
@@ -87,6 +88,7 @@ export function AppShell() {
 
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
       <RightDock />
+      <OnlineToaster />
     </div>
   )
 }

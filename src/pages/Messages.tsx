@@ -310,10 +310,11 @@ export function Messages() {
                   onDelete={deleteMessage}
                 />
                 <Composer
+                  targets={mentionTargets(members)}
                   placeholder={
                     selected.kind === 'dm'
-                      ? `Message ${dmOther?.displayName ?? ''}`
-                      : `Message #${selected.name}`
+                      ? `Message ${dmOther?.displayName ?? ''} · @ to tag`
+                      : `Message #${selected.name} · @ to tag`
                   }
                   onSendText={(text) => postMessage({ text })}
                   onSendClip={async (blob) => {

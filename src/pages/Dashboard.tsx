@@ -10,26 +10,23 @@ import {
   Archive,
   ArrowRight,
   CalendarDays,
-  Trophy,
-  Sparkles,
+  BarChart3,
+  HeartHandshake,
 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
-import type { CalendarEvent, Task, UserProfile } from '../lib/types'
+import type { CalendarEvent, Project, Task } from '../lib/types'
 import { EVENT_META } from '../lib/types'
 import { bikolGreeting } from '../lib/bikol'
 import { toISO } from '../lib/dates'
 import { PhotoCarousel } from '../components/PhotoCarousel'
 import { BICOL_PHOTO_SRCS } from '../lib/photos'
-import { Avatar } from '../components/Avatar'
-
-const SA_EMAILS = ['gbbrutas@up.edu.ph', 'ivmancenido@up.edu.ph']
 
 export function Dashboard() {
   const { profile } = useAuth()
   const [tasks, setTasks] = useState<Task[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
-  const [members, setMembers] = useState<UserProfile[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
 
   useEffect(() => {
     const unsubT = onSnapshot(collection(db, 'tasks'), (snap) =>
@@ -38,13 +35,17 @@ export function Dashboard() {
     const unsubE = onSnapshot(collection(db, 'events'), (snap) =>
       setEvents(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<CalendarEvent, 'id'>) }))),
     )
-    const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
-      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
+    const unsubP = onSnapshot(collection(db, 'projects'), (snap) =>
+      setProjects(
+        snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }))
+          .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+      ),
     )
     return () => {
       unsubT()
       unsubE()
-      unsubU()
+      unsubP()
     }
   }, [])
 
@@ -75,21 +76,21 @@ export function Dashboard() {
     .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? '').localeCompare(b.time ?? ''))
     .slice(0, 4)
 
-  // Fun SA performance: completed vs still-open, with a playful score.
-  const saStats = useMemo(() => {
-    return members
-      .filter((m) => SA_EMAILS.includes((m.email ?? '').toLowerCase()))
-      .map((m) => {
-        const assigned = tasks.filter((t) => t.assigneeUid === m.uid && !t.archived)
-        const done = assigned.filter((t) => t.status === 'done').length
-        const openN = assigned.length - done
-        const score = done * 10 + openN * 2
-        return { member: m, done, open: openN, total: assigned.length, score }
+  // Per-project progress (share of tasks completed).
+  const projectProgress = useMemo(() => {
+    return projects
+      .map((p) => {
+        const ts = live.filter((t) => t.projectId === p.id)
+        const done = ts.filter((t) => t.status === 'done').length
+        return { project: p, total: ts.length, done, pct: ts.length ? Math.round((done / ts.length) * 100) : 0 }
       })
-      .sort((a, b) => b.score - a.score)
-  }, [members, tasks])
+      .filter((r) => r.total > 0)
+  }, [projects, live])
 
-  const topScore = Math.max(1, ...saStats.map((s) => s.score))
+  // Collaboration / work-done snapshot for the whole team.
+  const completed = live.filter((t) => t.status === 'done').length
+  const inProgress = live.filter((t) => t.status === 'doing' || t.status === 'review').length
+  const overallPct = live.length ? Math.round((completed / live.length) * 100) : 0
 
   const firstName = (profile?.displayName ?? 'Ibaloney').split(' ')[0]
 
@@ -131,55 +132,6 @@ export function Dashboard() {
           </Link>
         ))}
       </div>
-
-      {/* Fun: SA performance */}
-      {saStats.length > 0 && (
-        <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="flex items-center gap-2 border-b border-border px-5 py-3">
-            <Trophy size={17} className="text-brand" />
-            <h2 className="font-display text-base font-bold text-ink">
-              Student Assistant Leaderboard
-            </h2>
-            <span className="ml-auto flex items-center gap-1 text-[0.7rem] text-muted">
-              <Sparkles size={12} /> +10 per done · +2 per open
-            </span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-2">
-            {saStats.map((s, i) => (
-              <div key={s.member.uid} className="rounded-xl border border-border bg-bg p-4">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <Avatar profile={s.member} size={40} rounded="rounded-full" />
-                    {i === 0 && s.score > 2 && (
-                      <span className="absolute -right-1 -top-2 text-lg" title="Top performer">
-                        👑
-                      </span>
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-bold text-ink">
-                      {s.member.displayName.split(' ')[0]}
-                    </div>
-                    <div className="text-[0.7rem] text-muted">
-                      {s.done} done · {s.open} in flight
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-display text-xl font-bold text-brand">{s.score}</div>
-                    <div className="text-[0.6rem] uppercase tracking-wide text-muted">points</div>
-                  </div>
-                </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-brand to-brand-ink transition-all"
-                    style={{ width: `${(s.score / topScore) * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* My tasks */}
@@ -259,6 +211,77 @@ export function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Collaboration snapshot */}
+      <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
+        <div className="flex items-center gap-2 border-b border-border px-5 py-4">
+          <HeartHandshake size={18} className="text-brand" />
+          <h2 className="font-display text-lg font-bold text-ink">Working together</h2>
+          <span className="ml-auto text-xs text-muted">Across all UP Ibalon projects</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
+          {[
+            { label: 'Tasks completed', value: completed, tint: '#2f8f6b' },
+            { label: 'In progress', value: inProgress, tint: '#2f6df0' },
+            { label: 'Active projects', value: projectProgress.length, tint: '#8b5cf6' },
+            { label: 'Overall progress', value: `${overallPct}%`, tint: '#ef3422' },
+          ].map((s) => (
+            <div key={s.label} className="rounded-xl border border-border bg-bg p-4 text-center">
+              <div className="font-display text-2xl font-bold" style={{ color: s.tint }}>
+                {s.value}
+              </div>
+              <div className="mt-0.5 text-[0.7rem] font-medium text-muted">{s.label}</div>
+            </div>
+          ))}
+        </div>
+        <div className="px-5 pb-2">
+          <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-brand to-brand-ink transition-all"
+              style={{ width: `${overallPct}%` }}
+            />
+          </div>
+          <p className="mt-1.5 pb-3 text-center text-xs text-muted">
+            {completed} of {live.length} tasks done together — every bit of progress moves the
+            mission forward. 🌋
+          </p>
+        </div>
+      </div>
+
+      {/* Progress by project */}
+      {projectProgress.length > 0 && (
+        <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
+          <div className="flex items-center gap-2 border-b border-border px-5 py-4">
+            <BarChart3 size={18} className="text-brand" />
+            <h2 className="font-display text-lg font-bold text-ink">Progress by project</h2>
+            <Link
+              to="/tasks"
+              className="ml-auto flex items-center gap-1 text-sm font-medium text-brand hover:underline"
+            >
+              Open board <ArrowRight size={15} />
+            </Link>
+          </div>
+          <div className="space-y-3 p-5">
+            {projectProgress.map(({ project, total, done, pct }) => (
+              <div key={project.id}>
+                <div className="mb-1 flex items-center gap-2 text-sm">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: project.color }} />
+                  <span className="font-medium text-ink">{project.name}</span>
+                  <span className="ml-auto text-xs text-muted">
+                    {done}/{total} · {pct}%
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${pct}%`, background: project.color }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

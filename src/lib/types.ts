@@ -141,8 +141,23 @@ export interface BoardItem {
   text?: string
   src?: string // image url (type 'image')
   color: string
+  fontFamily?: string
+  fontSize?: number
   authorUid: string
 }
+
+// Miro-like font choices (system/web-safe + the app serif — no extra loading).
+export const BOARD_FONTS: { label: string; value: string }[] = [
+  { label: 'Sans', value: 'Inter, system-ui, sans-serif' },
+  { label: 'Serif', value: "'Source Serif 4', Georgia, serif" },
+  { label: 'Slab', value: "'Rockwell', 'Roboto Slab', serif" },
+  { label: 'Mono', value: "'Courier New', monospace" },
+  { label: 'Rounded', value: "'Trebuchet MS', 'Segoe UI', sans-serif" },
+  { label: 'Handwriting', value: "'Comic Sans MS', 'Segoe Print', cursive" },
+  { label: 'Classic', value: "'Times New Roman', serif" },
+  { label: 'Wide', value: "Verdana, Geneva, sans-serif" },
+]
+export const BOARD_FONT_SIZES = [12, 14, 16, 20, 24, 32, 40, 56, 72]
 
 // Sticky-note / shape fill palette (light, Miro-like)
 export const NOTE_COLORS = ['#ffe08a', '#ffd0c7', '#c9ecd0', '#c7ddff', '#e6d2ff', '#ffffff']

@@ -1,20 +1,48 @@
 import { useRef, useState } from 'react'
 import { Send, Mic, Square, Loader2 } from 'lucide-react'
+import type { MentionTarget } from '../../lib/notifications'
 
 export function Composer({
   placeholder = 'Write a message…',
   onSendText,
   onSendClip,
+  targets = [],
 }: {
   placeholder?: string
   onSendText: (text: string) => Promise<void> | void
   onSendClip: (blob: Blob) => Promise<void>
+  targets?: MentionTarget[]
 }) {
   const [text, setText] = useState('')
   const [recording, setRecording] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [mq, setMq] = useState<string | null>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
+
+  const suggestions =
+    mq !== null
+      ? targets.filter((t) => t.handle.toLowerCase().startsWith(mq.toLowerCase())).slice(0, 5)
+      : []
+  const recompute = (val: string, pos: number) => {
+    const m = val.slice(0, pos).match(/@([a-z0-9]*)$/i)
+    setMq(m ? m[1] : null)
+  }
+  const insertMention = (handle: string) => {
+    const el = taRef.current
+    const pos = el ? el.selectionStart : text.length
+    const before = text.slice(0, pos).replace(/@([a-z0-9]*)$/i, `@${handle} `)
+    const nv = before + text.slice(pos)
+    setText(nv)
+    setMq(null)
+    requestAnimationFrame(() => {
+      if (el) {
+        el.focus()
+        el.selectionStart = el.selectionEnd = before.length
+      }
+    })
+  }
 
   const recRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -84,20 +112,43 @@ export function Composer({
           </div>
         ) : (
           <>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  send()
-                }
-              }}
-              placeholder={placeholder}
-              rows={1}
-              disabled={busy}
-              className="max-h-32 flex-1 resize-none rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
-            />
+            <div className="relative flex-1">
+              {suggestions.length > 0 && (
+                <div className="absolute bottom-full left-0 z-30 mb-1 w-52 overflow-hidden rounded-lg border border-border bg-surface shadow-xl">
+                  {suggestions.map((t) => (
+                    <button
+                      key={t.uid}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); insertMention(t.handle) }}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink transition hover:bg-surface-2"
+                    >
+                      <span className="font-semibold text-brand">@{t.handle}</span>
+                      <span className="truncate text-xs text-muted">{t.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <textarea
+                ref={taRef}
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value)
+                  recompute(e.target.value, e.target.selectionStart)
+                }}
+                onKeyUp={(e) => recompute(e.currentTarget.value, e.currentTarget.selectionStart)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey && suggestions.length === 0) {
+                    e.preventDefault()
+                    send()
+                  }
+                }}
+                onBlur={() => setTimeout(() => setMq(null), 150)}
+                placeholder={placeholder}
+                rows={1}
+                disabled={busy}
+                className="max-h-32 w-full resize-none rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/25"
+              />
+            </div>
             <button
               onClick={startRec}
               disabled={busy}
