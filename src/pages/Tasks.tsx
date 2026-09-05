@@ -76,6 +76,14 @@ export function Tasks() {
 
   const visible = useMemo(() => applyFilters(tasks, filters), [tasks, filters])
 
+  const archivedTasks = useMemo(() => {
+    const q = filters.search.trim().toLowerCase()
+    return tasks
+      .filter((t) => t.archived)
+      .filter((t) => !q || `${t.title} ${t.description ?? ''}`.toLowerCase().includes(q))
+      .sort((a, b) => (b.updatedAt?.toMillis?.() ?? 0) - (a.updatedAt?.toMillis?.() ?? 0))
+  }, [tasks, filters.search])
+
   const patch = (patch: Partial<TaskFilters>) => setFilters((f) => ({ ...f, ...patch }))
 
   // ---- task ops ----
@@ -150,6 +158,11 @@ export function Tasks() {
     setSelected(null)
   }
 
+  const setArchived = async (id: string, archived: boolean) => {
+    await updateDoc(doc(db, 'tasks', id), { archived, updatedAt: serverTimestamp() })
+    setSelected((s) => (s && s.id === id ? { ...s, archived } : s))
+  }
+
   // ---- project ops ----
   const createProject = async (name: string, color: string) => {
     const refDoc = await addDoc(collection(db, 'projects'), {
@@ -192,6 +205,7 @@ export function Tasks() {
         filters={filters}
         members={members}
         view={view}
+        archivedCount={tasks.filter((t) => t.archived).length}
         onChange={patch}
         onView={setView}
         onClear={() => setFilters(EMPTY_FILTERS)}
@@ -207,6 +221,25 @@ export function Tasks() {
           onOpen={setSelected}
           onQuickAdd={quickAdd}
         />
+      ) : view === 'archived' ? (
+        archivedTasks.length === 0 ? (
+          <div className="grid flex-1 place-items-center px-6 py-16 text-center text-sm text-muted">
+            <div>
+              <p className="font-medium text-ink">No archived tasks</p>
+              <p className="mt-1">
+                Open any task and choose <span className="font-medium">Archive</span> to move it
+                here. Archived tasks stay out of your boards but are never deleted.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <ListView
+            tasks={archivedTasks}
+            memberMap={memberMap}
+            projectMap={projectMap}
+            onOpen={setSelected}
+          />
+        )
       ) : (
         <ListView
           tasks={visible}
@@ -224,6 +257,7 @@ export function Tasks() {
           onClose={() => setSelected(null)}
           onPatch={patchTask}
           onDelete={removeTask}
+          onArchive={setArchived}
         />
       )}
     </div>

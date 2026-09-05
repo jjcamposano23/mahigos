@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2 } from 'lucide-react'
+import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2, Archive, ArchiveRestore } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { ensureSubfolder, SHARED_FOLDER_ID, uploadToDrive } from '../../lib/googleDrive'
 import {
@@ -26,6 +26,7 @@ export function TaskModal({
   onClose,
   onPatch,
   onDelete,
+  onArchive,
 }: {
   task: Task
   members: UserProfile[]
@@ -33,6 +34,7 @@ export function TaskModal({
   onClose: () => void
   onPatch: (id: string, patch: Partial<Task>) => void
   onDelete: (id: string) => void
+  onArchive: (id: string, archived: boolean) => void
 }) {
   const { user, profile } = useAuth()
   const [title, setTitle] = useState(task.title)
@@ -383,13 +385,32 @@ export function TaskModal({
           )}
         </div>
 
-        <div className="mt-5 flex justify-between border-t border-border pt-4">
-          <button
-            onClick={() => onDelete(task.id)}
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-brand transition hover:bg-brand-soft"
-          >
-            <Trash2 size={15} /> Delete
-          </button>
+        <div className="mt-5 flex items-center justify-between border-t border-border pt-4">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onDelete(task.id)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-brand transition hover:bg-brand-soft"
+            >
+              <Trash2 size={15} /> Delete
+            </button>
+            <button
+              onClick={() => {
+                onArchive(task.id, !task.archived)
+                onClose()
+              }}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-muted transition hover:bg-surface-2 hover:text-ink"
+            >
+              {task.archived ? (
+                <>
+                  <ArchiveRestore size={15} /> Unarchive
+                </>
+              ) : (
+                <>
+                  <Archive size={15} /> Archive
+                </>
+              )}
+            </button>
+          </div>
           <button
             onClick={onClose}
             className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink"

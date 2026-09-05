@@ -193,6 +193,7 @@ export interface Task {
   labels?: string[] // label ids (see LABELS)
   subtasks?: Subtask[]
   attachments?: TaskAttachment[]
+  archived?: boolean
   order: number
   createdBy: string
   completedAt?: Timestamp | null

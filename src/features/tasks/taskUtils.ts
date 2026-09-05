@@ -52,6 +52,7 @@ export const EMPTY_FILTERS: TaskFilters = {
 export function applyFilters(tasks: Task[], f: TaskFilters): Task[] {
   const q = f.search.trim().toLowerCase()
   return tasks.filter((t) => {
+    if (t.archived) return false // archived tasks live in their own view
     if (f.projectId !== 'all') {
       const pid = t.projectId ?? '__none__'
       if (pid !== f.projectId) return false

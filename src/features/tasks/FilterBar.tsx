@@ -1,14 +1,15 @@
-import { Search, KanbanSquare, List, X, Plus } from 'lucide-react'
+import { Search, KanbanSquare, List, Archive, X, Plus } from 'lucide-react'
 import type { UserProfile } from '../../lib/types'
 import { LABELS } from '../../lib/types'
 import { filtersActive, type TaskFilters } from './taskUtils'
 
-export type ViewMode = 'board' | 'list'
+export type ViewMode = 'board' | 'list' | 'archived'
 
 export function FilterBar({
   filters,
   members,
   view,
+  archivedCount,
   onChange,
   onView,
   onClear,
@@ -17,6 +18,7 @@ export function FilterBar({
   filters: TaskFilters
   members: UserProfile[]
   view: ViewMode
+  archivedCount: number
   onChange: (patch: Partial<TaskFilters>) => void
   onView: (v: ViewMode) => void
   onClear: () => void
@@ -44,6 +46,19 @@ export function FilterBar({
           }`}
         >
           <List size={15} /> List
+        </button>
+        <button
+          onClick={() => onView('archived')}
+          className={`flex items-center gap-1 rounded-md px-2 py-1 text-sm font-medium transition ${
+            view === 'archived' ? 'bg-brand-soft text-brand' : 'text-muted hover:text-ink'
+          }`}
+        >
+          <Archive size={15} /> Archived
+          {archivedCount > 0 && (
+            <span className="rounded-full bg-surface-2 px-1.5 text-[0.65rem] font-semibold text-muted">
+              {archivedCount}
+            </span>
+          )}
         </button>
       </div>
 
