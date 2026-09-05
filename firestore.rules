@@ -73,6 +73,13 @@ service cloud.firestore {
       }
     }
 
+    // Zoom meetings — created/edited only by Cloud Functions (Admin SDK);
+    // clients read the list and act through callable functions.
+    match /meetings/{meetingId} {
+      allow read: if isAllowed();
+      allow write: if false;
+    }
+
     // Shared calendar events
     match /events/{eventId} {
       allow read, create, update, delete: if isAllowed();

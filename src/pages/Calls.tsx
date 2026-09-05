@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { collection, onSnapshot } from 'firebase/firestore'
-import { Video, Plus, Hash, MessageSquare, PhoneCall, Users } from 'lucide-react'
+import { Video, Plus, Hash, MessageSquare, PhoneCall, Users, CalendarClock } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import type { CallDoc } from '../lib/types'
 import { CallRoom } from '../features/calls/CallRoom'
+import { MeetingsPanel } from '../features/calls/MeetingsPanel'
 
 const FRESH_MS = 45_000
 
@@ -21,6 +22,7 @@ export function Calls() {
   const [params, setParams] = useSearchParams()
   const [calls, setCalls] = useState<CallDoc[]>([])
   const [active, setActive] = useState<ActiveCall | null>(null)
+  const [tab, setTab] = useState<'rooms' | 'meetings'>('rooms')
 
   useEffect(() => {
     return onSnapshot(collection(db, 'calls'), (snap) =>
@@ -83,10 +85,38 @@ export function Calls() {
         </div>
       </div>
 
-      <button
-        onClick={startRoom}
-        className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-brand px-5 py-4 text-left text-white transition hover:bg-brand-ink"
-      >
+      {/* Tabs */}
+      <div className="mt-6 flex gap-1 rounded-lg border border-border p-0.5">
+        <button
+          onClick={() => setTab('rooms')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            tab === 'rooms' ? 'bg-brand-soft text-brand' : 'text-muted hover:text-ink'
+          }`}
+        >
+          <Video size={15} /> Call rooms
+        </button>
+        <button
+          onClick={() => setTab('meetings')}
+          className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+            tab === 'meetings' ? 'bg-brand-soft text-brand' : 'text-muted hover:text-ink'
+          }`}
+        >
+          <CalendarClock size={15} /> Zoom meetings
+        </button>
+      </div>
+
+      {tab === 'meetings' && (
+        <div className="mt-6">
+          <MeetingsPanel />
+        </div>
+      )}
+
+      {tab === 'rooms' && (
+        <>
+          <button
+            onClick={startRoom}
+            className="mt-6 flex w-full items-center gap-3 rounded-2xl bg-brand px-5 py-4 text-left text-white transition hover:bg-brand-ink"
+          >
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/15">
           <Plus size={20} />
         </span>
@@ -134,6 +164,8 @@ export function Calls() {
             </button>
           ))}
         </div>
+      )}
+        </>
       )}
     </div>
   )

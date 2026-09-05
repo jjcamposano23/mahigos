@@ -152,6 +152,23 @@ export interface CallParticipant {
   lastSeen?: Timestamp
 }
 
+export interface Meeting {
+  id: string
+  zoomId: string
+  topic: string
+  agenda?: string
+  startTime: string // ISO 8601
+  duration: number // minutes
+  timezone?: string
+  joinUrl: string
+  startUrl?: string
+  password?: string
+  eventId?: string
+  createdBy: string
+  createdByEmail?: string
+  createdAt?: Timestamp
+}
+
 export interface CallSignal {
   id: string
   from: string
