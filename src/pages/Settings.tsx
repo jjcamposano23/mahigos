@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { updatePassword, type AuthError } from 'firebase/auth'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { Upload, Check } from 'lucide-react'
@@ -16,6 +16,22 @@ export function Settings() {
   const [uploading, setUploading] = useState(false)
   const [avatarMsg, setAvatarMsg] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const [pName, setPName] = useState(profile?.displayName ?? '')
+  const [pEmail, setPEmail] = useState(profile?.email ?? '')
+  const [profileMsg, setProfileMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (profile) {
+      setPName(profile.displayName ?? '')
+      setPEmail(profile.email ?? '')
+    }
+  }, [profile?.uid]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveProfile = async () => {
+    await updateProfile({ displayName: pName.trim(), email: pEmail.trim() })
+    setProfileMsg('Saved ✓')
+    setTimeout(() => setProfileMsg(null), 2000)
+  }
 
   const changePw = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -127,20 +143,45 @@ export function Settings() {
       {/* Profile */}
       <section className="mt-4 rounded-xl border border-border bg-surface p-5">
         <h2 className="font-display text-lg font-semibold text-ink">Profile</h2>
-        <dl className="mt-4 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-muted">Name</dt>
-            <dd className="font-medium text-ink">{profile?.displayName}</dd>
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Name</span>
+            <input
+              value={pName}
+              onChange={(e) => setPName(e.target.value)}
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Email</span>
+            <input
+              type="email"
+              value={pEmail}
+              onChange={(e) => setPEmail(e.target.value)}
+              className="w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+            <span className="mt-1 block text-[0.7rem] text-muted">
+              This is your contact/display email in Mahigos. It does not change the Google/password
+              account you sign in with.
+            </span>
+          </label>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">
+              <span className="text-muted">Role: </span>
+              <span className="font-medium capitalize text-ink">{profile?.role}</span>
+            </span>
+            <button
+              onClick={saveProfile}
+              disabled={
+                !pName.trim() ||
+                (pName === profile?.displayName && pEmail === profile?.email)
+              }
+              className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+            >
+              {profileMsg ?? 'Save profile'}
+            </button>
           </div>
-          <div className="flex justify-between">
-            <dt className="text-muted">Email</dt>
-            <dd className="font-medium text-ink">{profile?.email}</dd>
-          </div>
-          <div className="flex justify-between">
-            <dt className="text-muted">Role</dt>
-            <dd className="font-medium capitalize text-ink">{profile?.role}</dd>
-          </div>
-        </dl>
+        </div>
       </section>
 
       {/* Appearance */}

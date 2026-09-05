@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Trash2, Check, X, LayoutGrid } from 'lucide-react'
+import { Plus, Trash2, Check, X, LayoutGrid, Pencil } from 'lucide-react'
 import type { Project } from '../../lib/types'
 import { PROJECT_COLORS } from '../../lib/types'
 
@@ -9,6 +9,7 @@ export function ProjectBar({
   counts,
   onSelect,
   onCreate,
+  onRename,
   onDelete,
 }: {
   projects: Project[]
@@ -16,10 +17,23 @@ export function ProjectBar({
   counts: Record<string, number>
   onSelect: (id: string | 'all') => void
   onCreate: (name: string, color: string) => void
+  onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
 }) {
   const [adding, setAdding] = useState(false)
   const [name, setName] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+
+  const startEdit = (p: Project) => {
+    setEditId(p.id)
+    setEditName(p.name)
+  }
+  const commitEdit = () => {
+    const n = editName.trim()
+    if (editId && n) onRename(editId, n)
+    setEditId(null)
+  }
 
   const create = () => {
     const n = name.trim()
@@ -47,24 +61,61 @@ export function ProjectBar({
 
       {projects.map((p) => {
         const active = selected === p.id
+        if (editId === p.id) {
+          return (
+            <div key={p.id} className="flex items-center gap-1 rounded-lg border border-brand/40 bg-surface px-2 py-1">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
+              <input
+                autoFocus
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') commitEdit()
+                  if (e.key === 'Escape') setEditId(null)
+                }}
+                className="w-32 bg-transparent text-sm text-ink outline-none"
+              />
+              <button onClick={commitEdit} className="text-brand" title="Save">
+                <Check size={15} />
+              </button>
+              <button onClick={() => setEditId(null)} className="text-muted" title="Cancel">
+                <X size={15} />
+              </button>
+            </div>
+          )
+        }
         return (
           <div key={p.id} className={pill(active)}>
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.color }} />
-            <button onClick={() => onSelect(p.id)} className="whitespace-nowrap">
+            <button
+              onClick={() => onSelect(p.id)}
+              onDoubleClick={() => startEdit(p)}
+              className="whitespace-nowrap"
+              title="Double-click to rename"
+            >
               {p.name}
             </button>
             <span className="rounded-full bg-surface-2 px-1.5 text-xs">{counts[p.id] ?? 0}</span>
             {active && (
-              <button
-                onClick={() => {
-                  if (confirm(`Delete project “${p.name}”? Its tasks will move to “All tasks”.`))
-                    onDelete(p.id)
-                }}
-                className="ml-0.5 text-muted transition hover:text-brand"
-                title="Delete project"
-              >
-                <Trash2 size={13} />
-              </button>
+              <>
+                <button
+                  onClick={() => startEdit(p)}
+                  className="ml-0.5 text-muted transition hover:text-brand"
+                  title="Rename project"
+                >
+                  <Pencil size={12} />
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete project “${p.name}”? Its tasks will move to “All tasks”.`))
+                      onDelete(p.id)
+                  }}
+                  className="text-muted transition hover:text-brand"
+                  title="Delete project"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </>
             )}
           </div>
         )

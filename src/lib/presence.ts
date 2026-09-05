@@ -25,3 +25,30 @@ export function isOnline(lastActive?: Timestamp | null): boolean {
   if (!lastActive) return false
   return Date.now() - lastActive.toMillis() < ONLINE_WINDOW_MS
 }
+
+const IDLE_WINDOW_MS = 600_000 // 10 min → idle
+
+export type PresenceStatus = 'online' | 'idle' | 'offline' | 'out'
+
+/** Combine the heartbeat with a member's manual availability into one status. */
+export function presenceStatus(
+  lastActive?: Timestamp | null,
+  availability?: 'available' | 'busy' | 'out',
+): PresenceStatus {
+  if (availability === 'out') return 'out'
+  if (!lastActive) return 'offline'
+  const age = Date.now() - lastActive.toMillis()
+  if (age < ONLINE_WINDOW_MS) return 'online'
+  if (age < IDLE_WINDOW_MS) return 'idle'
+  return 'offline'
+}
+
+export const PRESENCE_META: Record<
+  PresenceStatus,
+  { label: string; color: string }
+> = {
+  online: { label: 'Online', color: '#22c55e' },
+  idle: { label: 'Idle', color: '#f59e0b' },
+  offline: { label: 'Offline', color: '#9ca3af' },
+  out: { label: 'Out', color: '#ef4444' },
+}

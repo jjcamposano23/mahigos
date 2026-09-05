@@ -10,6 +10,9 @@ export interface ScheduleBlock {
   room?: string
 }
 
+export type Availability = 'available' | 'busy' | 'out'
+export type PresenceStatus = 'online' | 'idle' | 'offline' | 'out'
+
 export interface UserProfile {
   uid: string
   email: string
@@ -19,12 +22,37 @@ export interface UserProfile {
   photoURL?: string // uploaded avatar image
   avatar?: string // preset Bicol avatar id (see AVATAR_PRESETS)
   mustChangePassword?: boolean
+  availability?: Availability // manual status: available / busy / out
   // Student Assistant details (from UP Form 5)
   program?: string
   college?: string
   studentNo?: string
   schedule?: ScheduleBlock[]
   lastActive?: Timestamp
+  createdAt?: Timestamp
+}
+
+export interface TaskComment {
+  id: string
+  text: string
+  authorUid: string
+  authorName: string
+  authorAvatar?: string | null
+  authorPhotoURL?: string | null
+  parentId?: string | null
+  createdAt?: Timestamp
+}
+
+export interface AppNotification {
+  id: string
+  toUid: string
+  type: 'mention' | 'message' | 'call' | 'task' | 'meeting' | 'system'
+  title: string
+  body?: string
+  link?: string // in-app route to open
+  fromUid?: string
+  fromName?: string
+  read?: boolean
   createdAt?: Timestamp
 }
 
@@ -244,16 +272,20 @@ export interface LabelDef {
   color: string
 }
 
-// Curated org tags. Tasks may carry several.
+// Curated org tags (alphabetical). Tasks may carry several.
 export const LABELS: LabelDef[] = [
-  { id: 'events', name: 'Events', color: '#ef3422' },
-  { id: 'finance', name: 'Finance', color: '#2f8f6b' },
-  { id: 'membership', name: 'Membership', color: '#2f6df0' },
   { id: 'comms', name: 'Comms', color: '#e8a33d' },
+  { id: 'compliance', name: 'Compliance', color: '#b45309' },
+  { id: 'coordination', name: 'Coordination', color: '#65a30d' },
   { id: 'docs', name: 'Documentation', color: '#8b5cf6' },
-  { id: 'research', name: 'Research', color: '#0ea5a4' },
-  { id: 'outreach', name: 'Outreach', color: '#db2777' },
+  { id: 'events', name: 'Events', color: '#ef3422' },
+  { id: 'external', name: 'External', color: '#0891b2' },
+  { id: 'finance', name: 'Finance', color: '#2f8f6b' },
   { id: 'logistics', name: 'Logistics', color: '#6b7280' },
+  { id: 'meetings', name: 'Meetings', color: '#4f46e5' },
+  { id: 'membership', name: 'Membership', color: '#2f6df0' },
+  { id: 'outreach', name: 'Outreach', color: '#db2777' },
+  { id: 'research', name: 'Research', color: '#0ea5a4' },
 ]
 
 export const LABEL_MAP: Record<string, LabelDef> = Object.fromEntries(

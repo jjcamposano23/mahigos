@@ -318,7 +318,7 @@ exports.dailyDigest = onSchedule(
       <h3 style="font-size:14px;margin:16px 0 6px">${heading}</h3>
       ${items.length ? items.map(row).join('') : `<div style="color:#999;font-size:13px">${emptyMsg}</div>`}`
 
-    const body = `
+    const sharedBody = `
       <p style="margin:0 0 6px;color:#555">Good morning! Here's your UP Ibalon workspace snapshot for ${today}.</p>
       <div style="display:flex;gap:8px;margin:12px 0">
         <div style="flex:1;background:#f7f7f7;border-radius:8px;padding:10px;text-align:center">
@@ -341,6 +341,39 @@ exports.dailyDigest = onSchedule(
         msgCount ? activeChannels.join(' · ') : 'No new messages.'
       }</div>`
 
-    await sendMail(recipients, `Mahigos daily digest — ${today}`, shell('Your daily digest', body))
+    // Personalize: append each member's own recent mentions/notifications.
+    const notifCutoff = Date.now() - 24 * 3600 * 1000
+    const usersSnap = await db.collection('users').get()
+    const users = usersSnap.docs
+      .map((d) => ({ uid: d.id, ...d.data() }))
+      .filter((u) => u.email && ALLOWED.includes(String(u.email).toLowerCase()))
+
+    for (const u of users) {
+      const notifSnap = await db.collection('notifications').where('toUid', '==', u.uid).get()
+      const recent = notifSnap.docs
+        .map((d) => d.data())
+        .filter((n) => (n.createdAt?.toMillis?.() ?? 0) >= notifCutoff)
+        .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0))
+        .slice(0, 12)
+
+      const notifHtml = recent.length
+        ? recent
+            .map(
+              (n) => `
+        <div style="padding:6px 0;border-bottom:1px solid #f0f0f0">
+          <span style="font-weight:bold">${n.title || 'Notification'}</span>
+          ${n.body ? `<div style="color:#666;font-size:12px;margin-top:2px">${n.body}</div>` : ''}
+        </div>`,
+            )
+            .join('')
+        : `<div style="color:#999;font-size:13px">No new mentions or alerts.</div>`
+
+      const personal = `
+        ${sharedBody}
+        <h3 style="font-size:14px;margin:16px 0 6px">🔔 Your mentions &amp; alerts (last 24h)</h3>
+        ${notifHtml}`
+
+      await sendMail(u.email, `Mahigos daily digest — ${today}`, shell('Your daily digest', personal))
+    }
   },
 )

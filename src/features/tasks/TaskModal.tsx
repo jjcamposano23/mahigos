@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2, Archive, ArchiveRestore } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { ReviewThread } from './ReviewThread'
 import { ensureSubfolder, SHARED_FOLDER_ID, uploadToDrive } from '../../lib/googleDrive'
 import {
   LABELS,
@@ -137,14 +138,22 @@ export function TaskModal({
           </button>
         </div>
 
-        <textarea
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          onBlur={() => desc !== (task.description ?? '') && onPatch(task.id, { description: desc })}
-          placeholder="Add a description…"
-          rows={3}
-          className="mt-3 w-full resize-none rounded-lg border border-border bg-bg p-3 text-sm text-ink outline-none focus:border-brand"
-        />
+        <div className="relative mt-3">
+          <textarea
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            onBlur={() => desc !== (task.description ?? '') && onPatch(task.id, { description: desc })}
+            placeholder="Add a description…"
+            rows={6}
+            style={{ minHeight: 130, maxHeight: 260, scrollbarGutter: 'stable' }}
+            className="w-full resize-y overflow-y-auto rounded-lg border border-border bg-bg p-3 pb-6 text-sm text-ink outline-none focus:border-brand"
+          />
+          {desc.length > 260 && (
+            <span className="pointer-events-none absolute bottom-1.5 right-3 rounded bg-surface/90 px-1.5 text-[0.6rem] font-medium text-muted">
+              scroll for more ↓
+            </span>
+          )}
+        </div>
 
         <div className="mt-4 grid grid-cols-2 gap-4">
           <label className="block">
@@ -383,6 +392,11 @@ export function TaskModal({
               ))}
             </ul>
           )}
+        </div>
+
+        {/* Review thread */}
+        <div className="mt-4 border-t border-border pt-4">
+          <ReviewThread taskId={task.id} taskTitle={task.title} members={members} />
         </div>
 
         <div className="mt-5 flex items-center justify-between border-t border-border pt-4">

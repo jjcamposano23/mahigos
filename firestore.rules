@@ -31,9 +31,12 @@ service cloud.firestore {
       allow update, delete: if isAllowed() && (request.auth.uid == uid || isAdmin());
     }
 
-    // Shared task board
+    // Shared task board + per-task review comments
     match /tasks/{taskId} {
       allow read, create, update, delete: if isAllowed();
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if isAllowed();
+      }
     }
 
     // Projects / boards
@@ -78,6 +81,13 @@ service cloud.firestore {
     match /meetings/{meetingId} {
       allow read: if isAllowed();
       allow write: if false;
+    }
+
+    // Per-user notifications. Anyone allowlisted may create one (e.g. to
+    // @mention a teammate); recipients read/update/delete their own.
+    match /notifications/{noteId} {
+      allow create: if isAllowed();
+      allow read, update, delete: if isAllowed() && resource.data.toUid == request.auth.uid;
     }
 
     // Shared calendar events

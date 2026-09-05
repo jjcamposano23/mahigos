@@ -175,6 +175,10 @@ export function Tasks() {
     patch({ projectId: refDoc.id })
   }
 
+  const renameProject = async (id: string, name: string) => {
+    await updateDoc(doc(db, 'projects', id), { name })
+  }
+
   const deleteProject = async (id: string) => {
     const q = query(collection(db, 'tasks'), where('projectId', '==', id))
     const snap = await getDocs(q)
@@ -198,6 +202,7 @@ export function Tasks() {
         counts={counts}
         onSelect={(id) => patch({ projectId: id })}
         onCreate={createProject}
+        onRename={renameProject}
         onDelete={deleteProject}
       />
 

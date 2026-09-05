@@ -7,6 +7,7 @@ import { Avatar } from '../../components/Avatar'
 import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
 import { startPresence } from '../../lib/presence'
+import { NotificationBell } from '../notifications/NotificationBell'
 
 export function AppShell() {
   const { user, profile, logout } = useAuth()
@@ -46,6 +47,7 @@ export function AppShell() {
 
           <div className="flex-1" />
 
+          <NotificationBell />
           <ThemeToggle />
 
           <button
