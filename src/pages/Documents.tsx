@@ -6,269 +6,377 @@ import {
   doc,
   onSnapshot,
   serverTimestamp,
-  setDoc,
-  updateDoc,
 } from 'firebase/firestore'
-import { FileText, Plus, Trash2, MessageSquare, History, Save, Check, Loader2 } from 'lucide-react'
-import { db } from '../lib/firebase'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import {
+  FileText,
+  Link2,
+  Upload,
+  Plus,
+  Trash2,
+  ExternalLink,
+  Eye,
+  X,
+  Search,
+  Loader2,
+} from 'lucide-react'
+import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
-import { isOnline } from '../lib/presence'
-import type { Doc, UserProfile } from '../lib/types'
-import { DocEditor } from '../features/docs/DocEditor'
-import { DocComments } from '../features/docs/DocComments'
-import { DocVersions } from '../features/docs/DocVersions'
-import { Avatar } from '../components/Avatar'
+import type { DocProvider, DocResource, Project } from '../lib/types'
+import {
+  detectFileProvider,
+  detectLinkProvider,
+  PROVIDER_META,
+  previewUrl,
+} from '../features/docs/provider'
 
-type Panel = 'none' | 'comments' | 'versions'
-type SaveState = 'idle' | 'saving' | 'saved'
+function fmtSize(n?: number) {
+  if (!n) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+function ago(ms?: number) {
+  if (!ms) return ''
+  const s = Math.floor((Date.now() - ms) / 1000)
+  if (s < 60) return 'just now'
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return new Date(ms).toLocaleDateString()
+}
 
 export function Documents() {
   const { user, profile } = useAuth()
-  const [docs, setDocs] = useState<Doc[]>([])
-  const [members, setMembers] = useState<UserProfile[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [panel, setPanel] = useState<Panel>('none')
-  const [saveState, setSaveState] = useState<SaveState>('idle')
-  const [viewers, setViewers] = useState<{ uid: string; name: string; avatar?: string; lastActive?: { toMillis: () => number } }[]>([])
-  const titleTimer = useRef<number | null>(null)
+  const [resources, setResources] = useState<DocResource[]>([])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [search, setSearch] = useState('')
+  const [projectFilter, setProjectFilter] = useState<string | 'all'>('all')
+  const [showLink, setShowLink] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState<DocResource | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    const unsubD = onSnapshot(collection(db, 'documents'), (snap) =>
-      setDocs(
+    const unsubR = onSnapshot(collection(db, 'documents'), (snap) =>
+      setResources(
         snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Doc, 'id'>) }))
-          .sort((a, b) => (b.updatedAt?.toMillis?.() ?? 0) - (a.updatedAt?.toMillis?.() ?? 0)),
+          .map((d) => ({ id: d.id, ...(d.data() as Omit<DocResource, 'id'>) }))
+          .filter((r) => r.kind) // only new-style resources
+          .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)),
       ),
     )
-    const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
-      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
+    const unsubP = onSnapshot(collection(db, 'projects'), (snap) =>
+      setProjects(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }))),
     )
     return () => {
-      unsubD()
-      unsubU()
+      unsubR()
+      unsubP()
     }
   }, [])
 
-  const memberMap = useMemo(
-    () => Object.fromEntries(members.map((m) => [m.uid, m])),
-    [members],
+  const projectMap = useMemo(
+    () => Object.fromEntries(projects.map((p) => [p.id, p])),
+    [projects],
   )
 
-  useEffect(() => {
-    if (!selectedId && docs.length > 0) setSelectedId(docs[0].id)
-  }, [docs, selectedId])
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return resources.filter((r) => {
+      if (projectFilter !== 'all' && (r.projectId ?? '') !== projectFilter) return false
+      if (q && !`${r.title} ${r.fileName ?? ''}`.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [resources, search, projectFilter])
 
-  const selected = docs.find((d) => d.id === selectedId) || null
-
-  // presence within the open document
-  useEffect(() => {
-    if (!selectedId || !user) return
-    const meRef = doc(db, 'documents', selectedId, 'presence', user.uid)
-    const beat = () =>
-      void setDoc(meRef, {
-        name: profile?.displayName ?? 'Member',
-        avatar: profile?.avatar ?? null,
-        lastActive: serverTimestamp(),
-      })
-    beat()
-    const id = window.setInterval(beat, 20_000)
-    const unsub = onSnapshot(collection(db, 'documents', selectedId, 'presence'), (snap) =>
-      setViewers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as { name: string; avatar?: string; lastActive?: { toMillis: () => number } }) }))),
-    )
-    return () => {
-      window.clearInterval(id)
-      unsub()
-      void deleteDoc(meRef)
-    }
-  }, [selectedId, user, profile])
-
-  const createDoc = async () => {
-    const refDoc = await addDoc(collection(db, 'documents'), {
-      title: 'Untitled document',
-      content: '',
-      createdBy: user?.uid ?? '',
-      updatedBy: user?.uid ?? '',
-      updatedByName: profile?.displayName ?? '',
+  const addLink = async (url: string, title: string, projectId: string | null) => {
+    const provider = detectLinkProvider(url)
+    await addDoc(collection(db, 'documents'), {
+      title: title.trim() || url,
+      kind: 'link',
+      url: url.trim(),
+      provider,
+      projectId,
+      addedBy: user?.uid ?? '',
+      addedByName: profile?.displayName ?? 'Member',
       createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
-    setSelectedId(refDoc.id)
-    setPanel('none')
-  }
-
-  const removeDoc = async (id: string) => {
-    if (!confirm('Delete this document?')) return
-    await deleteDoc(doc(db, 'documents', id))
-    if (selectedId === id) setSelectedId(null)
-  }
-
-  const setTitle = (title: string) => {
-    if (!selectedId) return
-    if (titleTimer.current) window.clearTimeout(titleTimer.current)
-    titleTimer.current = window.setTimeout(() => {
-      void updateDoc(doc(db, 'documents', selectedId), { title, updatedAt: serverTimestamp() })
-    }, 500)
-  }
-
-  const saveVersion = async () => {
-    if (!selectedId || !selected) return
-    await addDoc(collection(db, 'documents', selectedId, 'versions'), {
-      content: selected.content,
-      savedBy: user?.uid ?? '',
-      savedByName: profile?.displayName ?? '',
-      savedAt: serverTimestamp(),
-    })
-    setSaveState('saved')
-  }
-
-  const restore = async (content: string) => {
-    if (!selectedId) return
-    await updateDoc(doc(db, 'documents', selectedId), {
-      content,
-      updatedBy: user?.uid ?? '',
-      updatedByName: profile?.displayName ?? '',
-      updatedAt: serverTimestamp(),
     })
   }
 
-  const activeViewers = viewers.filter((v) => v.uid !== user?.uid && isOnline(v.lastActive as never))
+  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    if (file.size > 25 * 1024 * 1024) {
+      alert('Please choose a file under 25 MB.')
+      return
+    }
+    setUploading(true)
+    try {
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const r = storageRef(storage, `library/${user.uid}/${Date.now()}-${safe}`)
+      await uploadBytes(r, file)
+      const url = await getDownloadURL(r)
+      await addDoc(collection(db, 'documents'), {
+        title: file.name,
+        kind: 'file',
+        url,
+        provider: detectFileProvider(file.name, file.type) as DocProvider,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+        projectId: projectFilter === 'all' ? null : projectFilter,
+        addedBy: user.uid,
+        addedByName: profile?.displayName ?? 'Member',
+        createdAt: serverTimestamp(),
+      })
+    } catch {
+      alert('Upload failed. Please try again.')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const remove = async (r: DocResource) => {
+    if (!confirm(`Remove “${r.title}” from the library?`)) return
+    await deleteDoc(doc(db, 'documents', r.id))
+  }
 
   return (
-    <div className="flex h-full">
-      {/* Doc list */}
-      <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface">
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="font-display text-lg font-bold text-ink">Documents</h2>
-          <button
-            onClick={createDoc}
-            className="grid h-7 w-7 place-items-center rounded-lg bg-brand text-white transition hover:bg-brand-ink"
-            title="New document"
-          >
-            <Plus size={16} />
+    <div className="mx-auto max-w-5xl px-6 py-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <div>
+          <h1 className="font-display text-2xl font-bold text-ink">Documents</h1>
+          <p className="text-sm text-muted">Google Docs, files, and links for the association.</p>
+        </div>
+        <div className="flex-1" />
+        <div className="relative">
+          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search…"
+            className="w-40 rounded-lg border border-border bg-surface py-2 pl-8 pr-2 text-sm text-ink outline-none focus:border-brand"
+          />
+        </div>
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+        >
+          <option value="all">All projects</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => setShowLink(true)}
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink transition hover:border-brand/40"
+        >
+          <Link2 size={15} /> Add link
+        </button>
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-60"
+        >
+          {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+          Upload file
+        </button>
+        <input ref={fileRef} type="file" onChange={onUpload} className="hidden" />
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="mt-16 text-center">
+          <FileText size={30} className="mx-auto mb-2 text-brand/40" />
+          <p className="text-sm text-muted">
+            No documents yet. Paste a Google Docs link or upload a file to get started.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {visible.map((r) => {
+            const meta = PROVIDER_META[r.provider]
+            const pv = r.kind === 'file' ? previewUrl(r.url, r.provider) : null
+            const project = r.projectId ? projectMap[r.projectId] : undefined
+            return (
+              <div
+                key={r.id}
+                className="hover-lift group flex flex-col rounded-xl border border-border bg-surface p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-lg text-white"
+                    style={{ background: meta.color }}
+                  >
+                    {r.kind === 'link' ? <Link2 size={18} /> : <FileText size={18} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-ink" title={r.title}>
+                      {r.title}
+                    </div>
+                    <div className="mt-0.5 text-[0.7rem] text-muted">
+                      {meta.label}
+                      {r.fileSize ? ` · ${fmtSize(r.fileSize)}` : ''}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => remove(r)}
+                    className="text-muted opacity-0 transition hover:text-brand group-hover:opacity-100"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+
+                {project && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: project.color }} />
+                    <span className="text-[0.65rem] font-medium uppercase tracking-wide text-muted">
+                      {project.name}
+                    </span>
+                  </div>
+                )}
+
+                <div className="mt-3 flex items-center gap-2 border-t border-border pt-3 text-xs text-muted">
+                  <span className="flex-1 truncate">
+                    {r.addedByName} · {ago(r.createdAt?.toMillis?.())}
+                  </span>
+                  {pv && (
+                    <button
+                      onClick={() => setPreview(r)}
+                      title="Preview"
+                      className="text-muted transition hover:text-brand"
+                    >
+                      <Eye size={15} />
+                    </button>
+                  )}
+                  <a
+                    href={r.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Open"
+                    className="text-muted transition hover:text-brand"
+                  >
+                    <ExternalLink size={15} />
+                  </a>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {showLink && (
+        <LinkModal projects={projects} onClose={() => setShowLink(false)} onAdd={addLink} />
+      )}
+      {preview && <PreviewModal resource={preview} onClose={() => setPreview(null)} />}
+    </div>
+  )
+}
+
+function LinkModal({
+  projects,
+  onClose,
+  onAdd,
+}: {
+  projects: Project[]
+  onClose: () => void
+  onAdd: (url: string, title: string, projectId: string | null) => Promise<void>
+}) {
+  const [url, setUrl] = useState('')
+  const [title, setTitle] = useState('')
+  const [projectId, setProjectId] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async () => {
+    if (!url.trim()) return
+    setBusy(true)
+    await onAdd(url.trim(), title, projectId || null)
+    setBusy(false)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold text-ink">Add a link</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={20} />
           </button>
         </div>
-        <div className="flex-1 space-y-0.5 overflow-y-auto p-2">
-          {docs.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => {
-                setSelectedId(d.id)
-                setPanel('none')
-              }}
-              className={`group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition ${
-                selectedId === d.id
-                  ? 'bg-brand-soft text-brand'
-                  : 'text-muted hover:bg-surface-2 hover:text-ink'
-              }`}
-            >
-              <FileText size={15} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{d.title || 'Untitled'}</span>
-              <Trash2
-                size={13}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeDoc(d.id)
-                }}
-                className="shrink-0 opacity-0 transition hover:text-brand group-hover:opacity-100"
-              />
-            </button>
-          ))}
-          {docs.length === 0 && (
-            <p className="px-2 py-4 text-center text-xs text-muted">
-              No documents yet. Create one to start.
-            </p>
-          )}
+        <p className="mt-1 text-xs text-muted">
+          Paste a Google Docs / Sheets / Drive link, or any web URL.
+        </p>
+        <div className="mt-4 space-y-3">
+          <input
+            autoFocus
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://docs.google.com/…"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+          />
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Title (optional)"
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+          />
+          <select
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+            className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+          >
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={submit}
+            disabled={busy || !url.trim()}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+          >
+            <Plus size={16} /> Add to library
+          </button>
         </div>
-      </aside>
+      </div>
+    </div>
+  )
+}
 
-      {/* Editor */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {selected ? (
-          <>
-            <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
-              <input
-                key={selected.id}
-                defaultValue={selected.title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="min-w-0 flex-1 bg-transparent font-display text-lg font-bold text-ink outline-none"
-                placeholder="Untitled document"
-              />
-
-              <span className="flex items-center gap-1 text-xs text-muted">
-                {saveState === 'saving' ? (
-                  <>
-                    <Loader2 size={12} className="animate-spin" /> Saving…
-                  </>
-                ) : saveState === 'saved' ? (
-                  <>
-                    <Check size={12} className="text-ok" /> Saved
-                  </>
-                ) : null}
-              </span>
-
-              {/* live viewers */}
-              <div className="flex -space-x-1.5">
-                {activeViewers.slice(0, 4).map((v) => (
-                  <span key={v.uid} title={`${v.name} · viewing`} className="ring-2 ring-surface rounded-full">
-                    <Avatar
-                      profile={memberMap[v.uid] ?? { displayName: v.name, avatar: v.avatar }}
-                      size={24}
-                      rounded="rounded-full"
-                    />
-                  </span>
-                ))}
-              </div>
-
-              <button
-                onClick={saveVersion}
-                className="flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-sm font-medium text-ink transition hover:border-brand/40"
-                title="Save a version snapshot"
-              >
-                <Save size={14} /> <span className="hidden sm:inline">Save version</span>
-              </button>
-              <button
-                onClick={() => setPanel(panel === 'versions' ? 'none' : 'versions')}
-                className={`grid h-8 w-8 place-items-center rounded-lg border border-border transition hover:border-brand/40 ${
-                  panel === 'versions' ? 'text-brand' : 'text-muted'
-                }`}
-                title="Version history"
-              >
-                <History size={16} />
-              </button>
-              <button
-                onClick={() => setPanel(panel === 'comments' ? 'none' : 'comments')}
-                className={`grid h-8 w-8 place-items-center rounded-lg border border-border transition hover:border-brand/40 ${
-                  panel === 'comments' ? 'text-brand' : 'text-muted'
-                }`}
-                title="Comments"
-              >
-                <MessageSquare size={16} />
-              </button>
-            </div>
-
-            <div className="flex min-h-0 flex-1">
-              <DocEditor document={selected} onSaveState={setSaveState} />
-              {panel === 'comments' && (
-                <DocComments docId={selected.id} memberMap={memberMap} onClose={() => setPanel('none')} />
-              )}
-              {panel === 'versions' && (
-                <DocVersions docId={selected.id} onClose={() => setPanel('none')} onRestore={restore} />
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="grid flex-1 place-items-center px-6 text-center">
-            <div>
-              <FileText size={30} className="mx-auto mb-2 text-brand/40" />
-              <p className="text-sm text-muted">
-                Select a document, or{' '}
-                <button onClick={createDoc} className="font-medium text-brand hover:underline">
-                  create a new one
-                </button>
-                .
-              </p>
-            </div>
+function PreviewModal({ resource, onClose }: { resource: DocResource; onClose: () => void }) {
+  const pv = previewUrl(resource.url, resource.provider)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative z-10 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <span className="truncate text-sm font-semibold text-ink">{resource.title}</span>
+          <div className="flex items-center gap-2">
+            <a
+              href={resource.url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+            >
+              <ExternalLink size={13} /> Open
+            </a>
+            <button onClick={onClose} className="text-muted hover:text-ink">
+              <X size={20} />
+            </button>
           </div>
+        </div>
+        {resource.provider === 'image' ? (
+          <div className="grid flex-1 place-items-center overflow-auto bg-bg p-4">
+            <img src={resource.url} alt={resource.title} className="max-h-full max-w-full" />
+          </div>
+        ) : (
+          <iframe title={resource.title} src={pv ?? resource.url} className="flex-1 bg-white" />
         )}
       </div>
     </div>

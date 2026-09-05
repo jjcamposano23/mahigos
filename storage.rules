@@ -29,6 +29,14 @@ service firebase.storage {
         && request.resource.size < 25 * 1024 * 1024;
     }
 
+    // Document library uploads under library/{uid}/…
+    match /library/{uid}/{file=**} {
+      allow read: if allowed();
+      allow write: if allowed()
+        && request.auth.uid == uid
+        && request.resource.size < 25 * 1024 * 1024;
+    }
+
     match /{all=**} {
       allow read, write: if false;
     }

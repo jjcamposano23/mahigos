@@ -54,33 +54,29 @@ export interface Message {
   createdAt?: Timestamp
 }
 
-export interface Doc {
+export type DocProvider =
+  | 'google-docs'
+  | 'google-sheets'
+  | 'google-slides'
+  | 'drive'
+  | 'word'
+  | 'pdf'
+  | 'image'
+  | 'link'
+  | 'file'
+
+export interface DocResource {
   id: string
   title: string
-  content: string // sanitized HTML
-  createdBy: string
-  updatedBy?: string
-  updatedByName?: string
-  updatedAt?: Timestamp
-  createdAt?: Timestamp
-}
-
-export interface DocVersion {
-  id: string
-  content: string
-  savedBy: string
-  savedByName: string
-  savedAt?: Timestamp
-}
-
-export interface DocComment {
-  id: string
-  text: string
-  quote?: string
-  authorUid: string
-  authorName: string
-  authorAvatar?: string | null
-  resolved?: boolean
+  kind: 'link' | 'file'
+  url: string
+  provider: DocProvider
+  fileName?: string
+  fileType?: string
+  fileSize?: number
+  projectId?: string | null
+  addedBy: string
+  addedByName: string
   createdAt?: Timestamp
 }
 
