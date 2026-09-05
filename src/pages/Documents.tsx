@@ -114,8 +114,7 @@ export function Documents() {
     })
   }
 
-  const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const uploadFile = async (file: File, projectId: string | null) => {
     if (!file || !user) return
     if (file.size > 25 * 1024 * 1024) {
       alert('Please choose a file under 25 MB.')
@@ -135,7 +134,7 @@ export function Documents() {
         fileName: file.name,
         fileType: file.type,
         fileSize: file.size,
-        projectId: projectFilter === 'all' ? null : projectFilter,
+        projectId,
         addedBy: user.uid,
         addedByName: profile?.displayName ?? 'Member',
         createdAt: serverTimestamp(),
@@ -147,6 +146,36 @@ export function Documents() {
       if (fileRef.current) fileRef.current.value = ''
     }
   }
+
+  const onUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) void uploadFile(file, projectFilter === 'all' ? null : projectFilter)
+  }
+
+  const moveResource = (id: string, projectId: string | null) =>
+    void updateDoc(doc(db, 'documents', id), { projectId })
+
+  // Folders use the same values as projectFilter: 'all', '' (Unfiled), or a project id.
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const folderProjectId = (folder: string) => (folder === 'all' || folder === '' ? null : folder)
+  const handleFolderDrop = (folder: string, e: React.DragEvent) => {
+    e.preventDefault()
+    setDropTarget(null)
+    const pid = folderProjectId(folder)
+    if (e.dataTransfer.files.length) {
+      for (const f of Array.from(e.dataTransfer.files)) void uploadFile(f, pid)
+      return
+    }
+    const id = e.dataTransfer.getData('text/mahigos-doc')
+    if (id && folder !== 'all') moveResource(id, pid)
+  }
+
+  const folderCount = (folder: string) =>
+    folder === 'all'
+      ? resources.length
+      : folder === ''
+        ? resources.filter((r) => !r.projectId).length
+        : resources.filter((r) => r.projectId === folder).length
 
   const remove = async (r: DocResource) => {
     if (!confirm(`Remove “${r.title}” from the library?`)) return
@@ -179,44 +208,66 @@ export function Documents() {
       {tab === 'library' && (
         <>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <div className="flex-1" />
-            <div className="relative">
-          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search…"
-            className="w-40 rounded-lg border border-border bg-surface py-2 pl-8 pr-2 text-sm text-ink outline-none focus:border-brand"
-          />
-        </div>
-        <select
-          value={projectFilter}
-          onChange={(e) => setProjectFilter(e.target.value)}
-          className="rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
-        >
-          <option value="all">All projects</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => setShowLink(true)}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink transition hover:border-brand/40"
-        >
-          <Link2 size={15} /> Add link
-        </button>
-        <button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-60"
-        >
-          {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
-          Upload file
-        </button>
-        <input ref={fileRef} type="file" onChange={onUpload} className="hidden" />
-      </div>
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search files…"
+                className="w-full max-w-xs rounded-lg border border-border bg-surface py-2 pl-8 pr-2 text-sm text-ink outline-none focus:border-brand"
+              />
+            </div>
+            <button
+              onClick={() => setShowLink(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink transition hover:border-brand/40"
+            >
+              <Link2 size={15} /> Add link
+            </button>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-60"
+            >
+              {uploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+              Upload file
+            </button>
+            <input ref={fileRef} type="file" onChange={onUpload} className="hidden" />
+          </div>
+
+          {/* Folders (by project). Click to open; drag files or cards onto one. */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              { key: 'all', name: 'All files', color: '#6b7280' },
+              { key: '', name: 'Unfiled', color: '#9ca3af' },
+              ...projects.map((p) => ({ key: p.id, name: p.name, color: p.color })),
+            ].map((f) => {
+              const active = projectFilter === f.key
+              const isDrop = dropTarget === f.key
+              return (
+                <button
+                  key={f.key || 'unfiled'}
+                  onClick={() => setProjectFilter(f.key)}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setDropTarget(f.key)
+                  }}
+                  onDragLeave={() => setDropTarget((t) => (t === f.key ? null : t))}
+                  onDrop={(e) => handleFolderDrop(f.key, e)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                    isDrop
+                      ? 'border-brand bg-brand-soft ring-2 ring-brand/40'
+                      : active
+                        ? 'border-brand bg-brand-soft text-brand'
+                        : 'border-border bg-surface text-muted hover:text-ink'
+                  }`}
+                >
+                  <FolderOpen size={15} style={{ color: f.color }} />
+                  {f.name}
+                  <span className="rounded-full bg-surface-2 px-1.5 text-xs">{folderCount(f.key)}</span>
+                </button>
+              )
+            })}
+          </div>
 
       {visible.length === 0 ? (
         <div className="mt-16 text-center">
@@ -234,7 +285,13 @@ export function Documents() {
             return (
               <div
                 key={r.id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/mahigos-doc', r.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
                 className="hover-lift group flex flex-col rounded-xl border border-border bg-surface p-4"
+                title="Drag onto a folder to move it"
               >
                 <div className="flex items-start gap-3">
                   <span

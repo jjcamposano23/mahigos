@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDoc,
   collection,
@@ -9,6 +9,7 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import {
   MousePointer2,
   StickyNote,
@@ -25,17 +26,21 @@ import {
   Maximize,
   Triangle,
   SquareRoundCorner,
+  Image as ImageIcon,
+  Loader2,
   X,
 } from 'lucide-react'
-import { db } from '../../lib/firebase'
+import { db, storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { isOnline } from '../../lib/presence'
+import { mentionTargets, notifyMentions } from '../../lib/notifications'
 import {
   NOTE_COLORS,
   STROKE_COLORS,
   type BoardCursor,
   type BoardItem,
   type BoardItemType,
+  type UserProfile,
 } from '../../lib/types'
 
 type Tool = 'select' | BoardItemType
@@ -58,6 +63,7 @@ const DEFAULTS: Record<BoardItemType, { w: number; h: number; color: string }> =
   text: { w: 180, h: 40, color: '#1c1a19' },
   arrow: { w: 0, h: 0, color: '#1c1a19' },
   line: { w: 0, h: 0, color: '#1c1a19' },
+  image: { w: 220, h: 160, color: '#ffffff' },
 }
 
 const TOOLBAR: { tool: Tool; icon: typeof Square; label: string }[] = [
@@ -121,10 +127,14 @@ export function Canvas({ boardId }: { boardId: string }) {
   const [dims, setDims] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
   const [library, setLibrary] = useState(false)
+  const [members, setMembers] = useState<UserProfile[]>([])
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const it = useRef<Interaction>(null)
   const lastCursor = useRef(0)
   const myColor = colorFor(user?.uid ?? 'x')
+  const targets = useMemo(() => mentionTargets(members), [members])
 
   useEffect(() => {
     const unsubN = onSnapshot(col, (snap) =>
@@ -133,13 +143,69 @@ export function Canvas({ boardId }: { boardId: string }) {
     const unsubC = onSnapshot(collection(db, 'whiteboards', boardId, 'cursors'), (snap) =>
       setCursors(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as BoardCursor) }))),
     )
+    const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
+      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
+    )
     return () => {
       unsubN()
       unsubC()
+      unsubU()
       if (user) void deleteDoc(doc(db, 'whiteboards', boardId, 'cursors', user.uid))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, user])
+
+  // Save text and fan out @mention notifications.
+  const commitText = (id: string, text: string) => {
+    patch(id, { text })
+    setEditingId(null)
+    if (text.trim())
+      void notifyMentions(text, targets, {
+        fromUid: user?.uid ?? '',
+        fromName: profile?.displayName ?? 'Member',
+        context: 'on a whiteboard',
+        link: '/whiteboard',
+      })
+  }
+
+  const uploadImage = async (file: File) => {
+    if (!file || !user) return
+    if (file.size > 10 * 1024 * 1024) return alert('Please choose an image under 10 MB.')
+    setUploading(true)
+    try {
+      const r = storageRef(storage, `whiteboards/${boardId}/${Date.now()}-${file.name}`)
+      await uploadBytes(r, file)
+      const url = await getDownloadURL(r)
+      // Size to natural aspect ratio, capped.
+      const dims = await new Promise<{ w: number; h: number }>((resolve) => {
+        const img = new window.Image()
+        img.onload = () => {
+          const scale = Math.min(1, 320 / Math.max(img.width, img.height))
+          resolve({ w: Math.round(img.width * scale) || 220, h: Math.round(img.height * scale) || 160 })
+        }
+        img.onerror = () => resolve({ w: 220, h: 160 })
+        img.src = url
+      })
+      const r0 = containerRef.current!.getBoundingClientRect()
+      const center = toWorld(r0.left + r0.width / 2, r0.top + r0.height / 2)
+      await addDoc(col, {
+        type: 'image',
+        x: Math.round(center.x - dims.w / 2),
+        y: Math.round(center.y - dims.h / 2),
+        w: dims.w,
+        h: dims.h,
+        src: url,
+        text: '',
+        color: '#ffffff',
+        authorUid: user.uid,
+      })
+    } catch (err) {
+      alert(`Image upload failed: ${(err as Error).message}`)
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
 
   const toWorld = (cx: number, cy: number) => {
     const r = containerRef.current!.getBoundingClientRect()
@@ -365,6 +431,12 @@ export function Canvas({ boardId }: { boardId: string }) {
           className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink">
           <Shapes size={17} />
         </button>
+        <button onClick={() => fileRef.current?.click()} title="Upload image" disabled={uploading}
+          className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink disabled:opacity-50">
+          {uploading ? <Loader2 size={16} className="animate-spin" /> : <ImageIcon size={17} />}
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f) }} />
         {selArr.length > 0 && (
           <>
             <span className="mx-1 h-6 w-px bg-border" />
@@ -433,9 +505,8 @@ export function Canvas({ boardId }: { boardId: string }) {
           {items.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
             <ItemView key={item.id} item={item} selected={sel.has(item.id)} editing={editingId === item.id} zoom={zoom}
               onPointerDown={(e) => startMove(e, item)}
-              onDoubleClick={() => { setSel(new Set([item.id])); setEditingId(item.id) }}
-              onEdit={(text) => patch(item.id, { text })}
-              onEditDone={() => setEditingId(null)}
+              onDoubleClick={() => { if (item.type === 'image') return; setSel(new Set([item.id])); setEditingId(item.id) }}
+              onCommit={(text) => commitText(item.id, text)}
               onResize={(e, h) => startResize(e, item, h)} />
           ))}
 
@@ -491,7 +562,7 @@ function ShapeLibrary({ onPick, onClose }: { onPick: (t: BoardItemType) => void;
 }
 
 function ItemView({
-  item, selected, editing, zoom, onPointerDown, onDoubleClick, onEdit, onEditDone, onResize,
+  item, selected, editing, zoom, onPointerDown, onDoubleClick, onCommit, onResize,
 }: {
   item: BoardItem
   selected: boolean
@@ -499,11 +570,11 @@ function ItemView({
   zoom: number
   onPointerDown: (e: React.PointerEvent) => void
   onDoubleClick: () => void
-  onEdit: (text: string) => void
-  onEditDone: () => void
+  onCommit: (text: string) => void
   onResize: (e: React.PointerEvent, h: Handle) => void
 }) {
   const isText = item.type === 'text'
+  const isImage = item.type === 'image'
   const style: React.CSSProperties = { left: item.x, top: item.y, width: item.w, height: item.h }
   const inner: React.CSSProperties = {}
   let cls = 'overflow-hidden'
@@ -511,6 +582,7 @@ function ItemView({
   else if (item.type === 'rect') { cls = 'border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
   else if (item.type === 'round') { cls = 'rounded-2xl border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
   else if (item.type === 'ellipse') { cls = 'rounded-full border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
+  else if (isImage) { cls = 'rounded-lg overflow-hidden shadow-sm' }
   else if (isText) cls = 'rounded'
 
   const clip =
@@ -530,9 +602,16 @@ function ItemView({
       onPointerDown={onPointerDown} onDoubleClick={onDoubleClick}>
       {clip && <span className="pointer-events-none absolute inset-0" style={{ background: item.color, clipPath: clip, border: '1px solid rgba(0,0,0,.15)' }} />}
 
-      {editing ? (
+      {isImage ? (
+        <img
+          src={item.src}
+          alt=""
+          draggable={false}
+          className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+        />
+      ) : editing ? (
         <textarea autoFocus defaultValue={item.text}
-          onBlur={(e) => { onEdit(e.target.value); onEditDone() }}
+          onBlur={(e) => onCommit(e.target.value)}
           onPointerDown={(e) => e.stopPropagation()}
           className="relative z-10 h-full w-full resize-none select-text bg-transparent px-2 py-1 text-center text-sm outline-none"
           style={{ color: isText ? item.color : 'rgba(0,0,0,.8)' }} />

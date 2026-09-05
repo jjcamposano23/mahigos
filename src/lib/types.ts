@@ -127,6 +127,7 @@ export type BoardItemType =
   | 'text'
   | 'arrow'
   | 'line'
+  | 'image'
 
 export interface BoardItem {
   id: string
@@ -138,6 +139,7 @@ export interface BoardItem {
   x2?: number // arrow end point
   y2?: number
   text?: string
+  src?: string // image url (type 'image')
   color: string
   authorUid: string
 }
