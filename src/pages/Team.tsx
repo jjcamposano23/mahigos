@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot } from 'firebase/firestore'
-import { Mail, GraduationCap, CalendarClock } from 'lucide-react'
+import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { Mail, GraduationCap, CalendarClock, Pencil, X } from 'lucide-react'
 import { db } from '../lib/firebase'
-import { Avatar } from '../components/Avatar'
-import type { ScheduleBlock, UserProfile } from '../lib/types'
+import { useAuth } from '../context/AuthContext'
+import { Avatar, AVATAR_PRESETS } from '../components/Avatar'
+import type { Role, ScheduleBlock, UserProfile } from '../lib/types'
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const WEEK = [1, 2, 3, 4, 5, 6] // Mon–Sat
@@ -61,8 +62,114 @@ function WeeklySchedule({ schedule }: { schedule: ScheduleBlock[] }) {
   )
 }
 
+function MemberEditor({
+  member,
+  onClose,
+}: {
+  member: UserProfile
+  onClose: () => void
+}) {
+  const [displayName, setDisplayName] = useState(member.displayName ?? '')
+  const [title, setTitle] = useState(member.title ?? '')
+  const [role, setRole] = useState<Role>(member.role ?? 'member')
+  const [avatar, setAvatar] = useState<string | undefined>(member.avatar)
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    if (!displayName.trim()) return
+    setSaving(true)
+    try {
+      await setDoc(
+        doc(db, 'users', member.uid),
+        { displayName: displayName.trim(), title: title.trim() || null, role, avatar: avatar ?? null },
+        { merge: true },
+      )
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold text-ink">Edit member</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={18} />
+          </button>
+        </div>
+
+        <label className="mt-4 block text-xs font-semibold text-muted">Display name</label>
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand/50"
+        />
+
+        <label className="mt-3 block text-xs font-semibold text-muted">Title / position</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Office of the Executive Secretary"
+          className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand/50"
+        />
+
+        <label className="mt-3 block text-xs font-semibold text-muted">Role</label>
+        <select
+          value={role}
+          onChange={(e) => setRole(e.target.value as Role)}
+          className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand/50"
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+
+        <label className="mt-3 block text-xs font-semibold text-muted">Avatar</label>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {AVATAR_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setAvatar(p.id)}
+              title={p.label}
+              className={`grid h-10 w-10 place-items-center rounded-lg ring-2 transition ${
+                avatar === p.id ? 'ring-brand' : 'ring-transparent hover:ring-border'
+              }`}
+              style={{ background: p.bg, color: p.fg }}
+            >
+              <p.icon size={22} />
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-ink"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !displayName.trim()}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Team() {
+  const { profile } = useAuth()
+  const isAdmin = profile?.role === 'admin'
   const [members, setMembers] = useState<UserProfile[]>([])
+  const [editing, setEditing] = useState<UserProfile | null>(null)
 
   useEffect(() => {
     return onSnapshot(collection(db, 'users'), (snap) =>
@@ -111,6 +218,15 @@ export function Team() {
                   )}
                 </div>
               </div>
+              {isAdmin && (
+                <button
+                  onClick={() => setEditing(m)}
+                  title="Edit member"
+                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:text-brand"
+                >
+                  <Pencil size={13} /> Edit
+                </button>
+              )}
             </div>
 
             {m.schedule && m.schedule.length > 0 && (
@@ -126,6 +242,8 @@ export function Team() {
           </div>
         ))}
       </div>
+
+      {editing && <MemberEditor member={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }
