@@ -9,6 +9,8 @@ export const BICOL_PHOTOS: BicolPhoto[] = [
   { src: '/photos/mayon.jpg', label: 'Mayon Volcano', place: 'Albay' },
   { src: '/photos/butanding.jpg', label: 'Butanding (whale shark)', place: 'Donsol, Sorsogon' },
   { src: '/photos/penafrancia.jpg', label: 'Peñafrancia Basilica', place: 'Naga City' },
+  { src: '/photos/penafrancia-procession.jpg', label: 'Peñafrancia Traslación', place: 'Naga City' },
+  { src: '/photos/pili.jpg', label: 'Pili nuts', place: 'Bicol' },
   { src: '/photos/bicol-map.png', label: 'Bicol Region', place: 'Region V' },
 ]
 

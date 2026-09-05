@@ -8,6 +8,7 @@ import {
   FolderOpen,
   PenTool,
   Video,
+  Sparkles,
   Settings,
   type LucideIcon,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ const items: Item[] = [
   { to: '/files', label: 'Files', icon: FolderOpen },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool },
   { to: '/calls', label: 'Calls', icon: Video, soon: true },
+  { to: '/ai', label: 'Mahigos AI', icon: Sparkles, soon: true },
 ]
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { Video } from 'lucide-react'
+import { Video, Sparkles } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import { LoadingScreen } from './components/LoadingScreen'
 import { RequireAuth } from './features/auth/RequireAuth'
@@ -46,6 +46,17 @@ export default function App() {
                 icon={Video}
                 phase="Phase 5"
                 blurb="Video and audio meetings powered by the UPIAA OSEC Zoom account, launched right inside Mahigos."
+              />
+            }
+          />
+          <Route
+            path="/ai"
+            element={
+              <ComingSoon
+                title="Mahigos AI"
+                icon={Sparkles}
+                phase="Phase 6"
+                blurb="Your UP Ibalon AI assistant — summarize missed chats and long threads, draft documents, and answer questions about your projects."
               />
             }
           />

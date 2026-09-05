@@ -6,7 +6,7 @@ import { Seal } from './Logo'
 export function LoadingScreen({ label = 'Loading Mahigos' }: { label?: string }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-bg">
-      <div className="banig pointer-events-none absolute inset-0 opacity-40" />
+      <div className="banig pointer-events-none absolute inset-0 opacity-[0.12]" />
       <div className="relative flex flex-col items-center gap-6">
         <div className="relative grid h-32 w-32 place-items-center">
           {/* spinning ring */}
