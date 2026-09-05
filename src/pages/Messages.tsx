@@ -15,6 +15,7 @@ import { Hash, Video } from 'lucide-react'
 import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { isOnline } from '../lib/presence'
+import { mentionTargets, notify, notifyMentions } from '../lib/notifications'
 import type { Channel, Message, UserProfile } from '../lib/types'
 import { ChannelList } from '../features/messages/ChannelList'
 import { MessageList } from '../features/messages/MessageList'
@@ -140,6 +141,29 @@ export function Messages() {
       await updateDoc(doc(db, 'channels', selectedId, 'messages', parentId), {
         replyCount: increment(1),
       })
+    }
+    // @mention + DM notifications
+    const sel = allChannels.find((c) => c.id === selectedId)
+    const label = sel?.kind === 'dm' ? 'in a direct message' : `in #${sel?.name ?? 'channel'}`
+    if (payload.text)
+      await notifyMentions(payload.text, mentionTargets(members), {
+        fromUid: user?.uid ?? '',
+        fromName: profile?.displayName ?? 'Member',
+        context: label,
+        link: '/messages',
+      })
+    if (sel?.kind === 'dm') {
+      const otherUid = (sel.members ?? []).find((u) => u !== user?.uid)
+      if (otherUid)
+        await notify({
+          toUid: otherUid,
+          type: 'message',
+          title: `${profile?.displayName ?? 'Member'} messaged you`,
+          body: payload.text ? payload.text.slice(0, 90) : 'Sent a voice clip',
+          link: '/messages',
+          fromUid: user?.uid,
+          fromName: profile?.displayName,
+        })
     }
   }
 

@@ -4,7 +4,6 @@ import {
   KanbanSquare,
   CalendarDays,
   Users,
-  MessagesSquare,
   FolderOpen,
   PenTool,
   Video,
@@ -28,10 +27,9 @@ const items: Item[] = [
   { to: '/tasks', label: 'Tasks', icon: KanbanSquare },
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/team', label: 'Team', icon: Users },
-  { to: '/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/files', label: 'Files', icon: FolderOpen },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool },
-  { to: '/calls', label: 'Calls', icon: Video },
+  { to: '/meetings', label: 'Meetings', icon: Video },
   { to: '/ai', label: 'Mahigos AI', icon: Sparkles, soon: true },
 ]
 

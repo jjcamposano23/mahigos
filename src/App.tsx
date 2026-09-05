@@ -13,6 +13,7 @@ import { Messages } from './pages/Messages'
 import { Documents } from './pages/Documents'
 import { Whiteboard } from './pages/Whiteboard'
 import { Calls } from './pages/Calls'
+import { Meetings } from './pages/Meetings'
 import { Settings } from './pages/Settings'
 import { ComingSoon } from './pages/ComingSoon'
 
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/files" element={<Documents />} />
           <Route path="/docs" element={<Navigate to="/files" replace />} />
           <Route path="/whiteboard" element={<Whiteboard />} />
+          <Route path="/meetings" element={<Meetings />} />
           <Route path="/calls" element={<Calls />} />
           <Route
             path="/ai"

@@ -8,6 +8,7 @@ import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
 import { startPresence } from '../../lib/presence'
 import { NotificationBell } from '../notifications/NotificationBell'
+import { RightDock } from '../dock/RightDock'
 
 export function AppShell() {
   const { user, profile, logout } = useAuth()
@@ -73,7 +74,7 @@ export function AppShell() {
           </button>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-auto bg-bg">
+        <main className="min-h-0 flex-1 overflow-auto bg-bg pr-12">
           <Outlet />
         </main>
 
@@ -85,6 +86,7 @@ export function AppShell() {
       </div>
 
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
+      <RightDock />
     </div>
   )
 }
