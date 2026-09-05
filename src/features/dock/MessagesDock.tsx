@@ -15,6 +15,7 @@ import { db, storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { presenceStatus, PRESENCE_META } from '../../lib/presence'
 import { mentionTargets, notify, notifyMentions } from '../../lib/notifications'
+import { toggledReactions } from '../messages/Reactions'
 import type { Channel, Message, UserProfile } from '../../lib/types'
 import { MessageList } from '../messages/MessageList'
 import { Composer } from '../messages/Composer'
@@ -144,6 +145,13 @@ export function MessagesDock() {
       })
   }
 
+  const reactMessage = async (m: Message, emoji: string) => {
+    if (!selectedId || !user) return
+    await updateDoc(doc(db, 'channels', selectedId, 'messages', m.id), {
+      reactions: toggledReactions(m.reactions, emoji, user.uid),
+    })
+  }
+
   const uploadClip = async (blob: Blob) => {
     const r = storageRef(storage, `clips/${user!.uid}/${Date.now()}.webm`)
     await uploadBytes(r, blob)
@@ -204,6 +212,8 @@ export function MessagesDock() {
             onOpenThread={() => {}}
             onEdit={editMessage}
             onDelete={deleteMessage}
+            onReact={reactMessage}
+            showThreads={false}
           />
         </div>
         <Composer

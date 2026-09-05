@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Trash2, Check, X } from 'lucide-react'
 import { Avatar } from '../../components/Avatar'
+import { ReactionBar } from './Reactions'
 import type { Message, UserProfile } from '../../lib/types'
 
 function timeOf(m: Message): number {
@@ -26,6 +27,7 @@ export function MessageList({
   onOpenThread,
   onEdit,
   onDelete,
+  onReact,
   showThreads = true,
 }: {
   messages: Message[]
@@ -34,6 +36,7 @@ export function MessageList({
   onOpenThread?: (m: Message) => void
   onEdit?: (id: string, text: string) => void
   onDelete?: (m: Message) => void
+  onReact?: (m: Message, emoji: string) => void
   showThreads?: boolean
 }) {
   const endRef = useRef<HTMLDivElement>(null)
@@ -168,6 +171,14 @@ export function MessageList({
                           </button>
                         )}
                       </div>
+                    )}
+
+                    {onReact && (
+                      <ReactionBar
+                        reactions={m.reactions}
+                        currentUid={currentUid}
+                        onToggle={(emoji) => onReact(m, emoji)}
+                      />
                     )}
                   </>
                 )}

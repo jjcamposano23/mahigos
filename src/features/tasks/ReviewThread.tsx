@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore'
+import { addDoc, collection, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { MessagesSquare, CornerDownRight, Send, X } from 'lucide-react'
 import { db } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { mentionTargets, notifyMentions } from '../../lib/notifications'
 import { MentionTextarea } from '../notifications/MentionTextarea'
+import { ReactionBar, toggledReactions } from '../messages/Reactions'
 import { Avatar } from '../../components/Avatar'
 import type { TaskComment, UserProfile } from '../../lib/types'
 
@@ -88,6 +89,13 @@ export function ReviewThread({
     setReplyTo(null)
   }
 
+  const react = async (c: TaskComment, emoji: string) => {
+    if (!user) return
+    await updateDoc(doc(db, 'tasks', taskId, 'comments', c.id), {
+      reactions: toggledReactions(c.reactions, emoji, user.uid),
+    })
+  }
+
   const top = comments.filter((c) => !c.parentId)
   const repliesOf = (id: string) => comments.filter((c) => c.parentId === id)
 
@@ -95,7 +103,7 @@ export function ReviewThread({
     <div key={c.id} className={`flex gap-2.5 ${isReply ? 'ml-8 mt-2' : ''}`}>
       <Avatar profile={{ displayName: c.authorName, avatar: c.authorAvatar ?? undefined, photoURL: c.authorPhotoURL ?? undefined }} size={28} rounded="rounded-full" />
       <div className="min-w-0 flex-1">
-        <div className="rounded-xl rounded-tl-none border border-border bg-bg px-3 py-2">
+        <div className="group rounded-xl rounded-tl-none border border-border bg-bg px-3 py-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-ink">{c.authorName}</span>
             <span className="text-[0.65rem] text-muted">{timeAgo(c.createdAt?.toMillis?.())}</span>
@@ -112,6 +120,7 @@ export function ReviewThread({
           <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">
             {renderWithMentions(c.text)}
           </p>
+          <ReactionBar reactions={c.reactions} currentUid={user?.uid} onToggle={(e) => react(c, e)} />
         </div>
         {!isReply && (
           <button

@@ -19,6 +19,7 @@ export function ThreadPanel({
   onSendClip,
   onEdit,
   onDelete,
+  onReact,
 }: {
   root: Message
   replies: Message[]
@@ -29,6 +30,7 @@ export function ThreadPanel({
   onSendClip: (blob: Blob) => Promise<void>
   onEdit?: (id: string, text: string) => void
   onDelete?: (m: Message) => void
+  onReact?: (m: Message, emoji: string) => void
 }) {
   const author = memberMap[root.authorUid]
   return (
@@ -67,6 +69,7 @@ export function ThreadPanel({
         currentUid={currentUid}
         onEdit={onEdit}
         onDelete={onDelete}
+        onReact={onReact}
         showThreads={false}
       />
 

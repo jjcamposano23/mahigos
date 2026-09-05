@@ -40,6 +40,7 @@ export interface TaskComment {
   authorAvatar?: string | null
   authorPhotoURL?: string | null
   parentId?: string | null
+  reactions?: Record<string, string[]> // emoji -> uids
   createdAt?: Timestamp
 }
 
@@ -81,6 +82,7 @@ export interface Message {
   clipType?: 'audio' | 'video' | null
   edited?: boolean
   unsent?: boolean // DM message withdrawn ("unsent a message")
+  reactions?: Record<string, string[]> // emoji -> uids
   createdAt?: Timestamp
 }
 

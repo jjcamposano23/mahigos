@@ -16,6 +16,7 @@ import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { isOnline } from '../lib/presence'
 import { mentionTargets, notify, notifyMentions } from '../lib/notifications'
+import { toggledReactions } from '../features/messages/Reactions'
 import type { Channel, Message, UserProfile } from '../lib/types'
 import { ChannelList } from '../features/messages/ChannelList'
 import { MessageList } from '../features/messages/MessageList'
@@ -194,6 +195,13 @@ export function Messages() {
     if (threadId === m.id) setThreadId(null)
   }
 
+  const reactMessage = async (m: Message, emoji: string) => {
+    if (!selectedId || !user) return
+    await updateDoc(doc(db, 'channels', selectedId, 'messages', m.id), {
+      reactions: toggledReactions(m.reactions, emoji, user.uid),
+    })
+  }
+
   const renameChannel = async (id: string, name: string) => {
     const clean = name.trim().replace(/^#/, '')
     if (clean) await updateDoc(doc(db, 'channels', id), { name: clean })
@@ -319,6 +327,7 @@ export function Messages() {
                   onOpenThread={(m) => setThreadId(m.id)}
                   onEdit={editMessage}
                   onDelete={deleteMessage}
+                  onReact={reactMessage}
                 />
                 <Composer
                   targets={mentionTargets(members)}
@@ -343,6 +352,7 @@ export function Messages() {
                   currentUid={user?.uid}
                   onEdit={editMessage}
                   onDelete={deleteMessage}
+                  onReact={reactMessage}
                   onClose={() => setThreadId(null)}
                   onSendText={(text) => postMessage({ text }, threadRoot.id)}
                   onSendClip={async (blob) => {
