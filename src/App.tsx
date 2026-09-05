@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { Video, Sparkles } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import { LoadingScreen } from './components/LoadingScreen'
 import { RequireAuth } from './features/auth/RequireAuth'
@@ -12,6 +12,7 @@ import { Team } from './pages/Team'
 import { Messages } from './pages/Messages'
 import { Documents } from './pages/Documents'
 import { Whiteboard } from './pages/Whiteboard'
+import { Calls } from './pages/Calls'
 import { Settings } from './pages/Settings'
 import { ComingSoon } from './pages/ComingSoon'
 
@@ -38,17 +39,7 @@ export default function App() {
           <Route path="/files" element={<Documents />} />
           <Route path="/docs" element={<Navigate to="/files" replace />} />
           <Route path="/whiteboard" element={<Whiteboard />} />
-          <Route
-            path="/calls"
-            element={
-              <ComingSoon
-                title="Calls"
-                icon={Video}
-                phase="Phase 5"
-                blurb="Video and audio meetings powered by the UPIAA OSEC Zoom account, launched right inside Mahigos."
-              />
-            }
-          />
+          <Route path="/calls" element={<Calls />} />
           <Route
             path="/ai"
             element={

@@ -10,7 +10,8 @@ import {
   updateDoc,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { Hash } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Hash, Video } from 'lucide-react'
 import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { isOnline } from '../lib/presence'
@@ -23,6 +24,7 @@ import { Avatar } from '../components/Avatar'
 
 export function Messages() {
   const { user, profile } = useAuth()
+  const navigate = useNavigate()
   const [allChannels, setAllChannels] = useState<Channel[]>([])
   const [members, setMembers] = useState<UserProfile[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -204,6 +206,19 @@ export function Messages() {
       ? memberMap[(selected.members ?? []).find((u) => u !== user?.uid) ?? '']
       : undefined
 
+  const startCall = () => {
+    if (!selected) return
+    const title =
+      selected.kind === 'dm' ? dmOther?.displayName ?? 'Direct message' : `#${selected.name}`
+    const q = new URLSearchParams({
+      join: selected.id,
+      name: title,
+      kind: selected.kind === 'dm' ? 'dm' : 'channel',
+      channelId: selected.id,
+    })
+    navigate(`/calls?${q.toString()}`)
+  }
+
   return (
     <div className="flex h-full">
       <ChannelList
@@ -250,6 +265,14 @@ export function Messages() {
                   </div>
                 </>
               )}
+              <div className="flex-1" />
+              <button
+                onClick={startCall}
+                title="Start a call"
+                className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-ink transition hover:border-brand/40 hover:text-brand"
+              >
+                <Video size={16} /> Call
+              </button>
             </div>
 
             <div className="flex min-h-0 flex-1">

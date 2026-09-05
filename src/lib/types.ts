@@ -127,6 +127,40 @@ export interface BoardCursor {
   updatedAt?: Timestamp
 }
 
+// ─── Native calls (WebRTC, Firestore-signaled) ───────────────────────────────
+export interface CallDoc {
+  id: string
+  title: string
+  kind: 'room' | 'channel' | 'dm'
+  channelId?: string | null
+  createdBy: string
+  createdByName: string
+  status: 'active' | 'ended'
+  startedAt?: Timestamp
+  lastActive?: Timestamp
+}
+
+export interface CallParticipant {
+  uid: string
+  name: string
+  avatar?: string | null
+  photoURL?: string | null
+  micOn: boolean
+  camOn: boolean
+  sharing: boolean
+  joinedAt?: Timestamp
+  lastSeen?: Timestamp
+}
+
+export interface CallSignal {
+  id: string
+  from: string
+  to: string
+  kind: 'offer' | 'answer' | 'candidate'
+  payload: string // JSON-encoded SDP or ICE candidate
+  createdAt?: Timestamp
+}
+
 export type TaskStatus = 'backlog' | 'todo' | 'doing' | 'review' | 'done'
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
 

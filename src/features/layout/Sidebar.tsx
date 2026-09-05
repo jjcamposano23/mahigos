@@ -31,7 +31,7 @@ const items: Item[] = [
   { to: '/messages', label: 'Messages', icon: MessagesSquare },
   { to: '/files', label: 'Files', icon: FolderOpen },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool },
-  { to: '/calls', label: 'Calls', icon: Video, soon: true },
+  { to: '/calls', label: 'Calls', icon: Video },
   { to: '/ai', label: 'Mahigos AI', icon: Sparkles, soon: true },
 ]
 

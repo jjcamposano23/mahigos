@@ -65,6 +65,14 @@ service cloud.firestore {
       }
     }
 
+    // Native calls: participants + WebRTC signaling subcollections
+    match /calls/{callId} {
+      allow read, create, update, delete: if isAllowed();
+      match /{sub}/{subId} {
+        allow read, create, update, delete: if isAllowed();
+      }
+    }
+
     // Shared calendar events
     match /events/{eventId} {
       allow read, create, update, delete: if isAllowed();
