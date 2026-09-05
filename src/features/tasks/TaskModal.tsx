@@ -1,8 +1,7 @@
 import { useRef, useState } from 'react'
 import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2 } from 'lucide-react'
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
+import { ensureSubfolder, SHARED_FOLDER_ID, uploadToDrive } from '../../lib/googleDrive'
 import {
   LABELS,
   PRIORITY_META,
@@ -60,21 +59,20 @@ export function TaskModal({
     if (file.size > 25 * 1024 * 1024) return alert('Please choose a file under 25 MB.')
     setUploading(true)
     try {
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const r = storageRef(storage, `library/${user.uid}/${Date.now()}-${safe}`)
-      await uploadBytes(r, file)
-      const url = await getDownloadURL(r)
+      // Task submissions are backed up in the shared Google Drive folder.
+      const subId = await ensureSubfolder(SHARED_FOLDER_ID, 'Mahigos — Task Submissions')
+      const uploaded = await uploadToDrive(subId, file)
       addAttachment({
         id: uid(),
-        name: file.name,
-        url,
+        name: uploaded.name,
+        url: uploaded.webViewLink ?? '',
         kind: 'file',
         fileType: file.type,
         size: file.size,
         addedByName: profile?.displayName ?? '',
       })
-    } catch {
-      alert('Upload failed.')
+    } catch (err) {
+      alert(`Drive upload failed: ${(err as Error).message}. Try “Connect Google Drive” in Files first.`)
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''

@@ -22,7 +22,9 @@ import {
   Loader2,
   Pencil,
   FolderOpen,
+  Cloud,
 } from 'lucide-react'
+import { DriveBrowser } from '../features/docs/DriveBrowser'
 import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import type { DocProvider, DocResource, Project } from '../lib/types'
@@ -32,9 +34,6 @@ import {
   PROVIDER_META,
   previewUrl,
 } from '../features/docs/provider'
-
-const SHARED_DRIVE =
-  'https://drive.google.com/drive/folders/1t7Tq6M0yrkMRsEW8tC-XAD8Y2eLv209h?usp=drive_link'
 
 function fmtSize(n?: number) {
   if (!n) return ''
@@ -61,7 +60,13 @@ export function Documents() {
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<DocResource | null>(null)
   const [editing, setEditing] = useState<DocResource | null>(null)
+  const [tab, setTab] = useState<'drive' | 'library'>('drive')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const tabCls = (a: boolean) =>
+    `flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition ${
+      a ? 'border-brand text-brand' : 'border-transparent text-muted hover:text-ink'
+    }`
 
   useEffect(() => {
     const unsubR = onSnapshot(collection(db, 'documents'), (snap) =>
@@ -155,22 +160,27 @@ export function Documents() {
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold text-ink">Files</h1>
-          <p className="text-sm text-muted">Central repository of files and links for UP Ibalon.</p>
-        </div>
-        <div className="flex-1" />
-        <a
-          href={SHARED_DRIVE}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink transition hover:border-brand/40"
-          title="Open the shared Google Drive folder"
-        >
-          <FolderOpen size={15} /> Shared Drive
-        </a>
-        <div className="relative">
+      <div>
+        <h1 className="font-display text-2xl font-bold text-ink">Files</h1>
+        <p className="text-sm text-muted">Central repository of files and links for UP Ibalon.</p>
+      </div>
+
+      <div className="mt-4 flex gap-1 border-b border-border">
+        <button onClick={() => setTab('drive')} className={tabCls(tab === 'drive')}>
+          <Cloud size={15} /> Shared Drive
+        </button>
+        <button onClick={() => setTab('library')} className={tabCls(tab === 'library')}>
+          <FolderOpen size={15} /> Uploads &amp; Links
+        </button>
+      </div>
+
+      {tab === 'drive' && <DriveBrowser />}
+
+      {tab === 'library' && (
+        <>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <div className="flex-1" />
+            <div className="relative">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
             value={search}
@@ -288,6 +298,8 @@ export function Documents() {
             )
           })}
         </div>
+      )}
+        </>
       )}
 
       {showLink && (

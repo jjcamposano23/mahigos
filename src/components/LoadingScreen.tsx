@@ -38,9 +38,7 @@ export function LoadingScreen({ label = 'Loading Mahigos' }: { label?: string })
         </div>
         <div className="text-center">
           <div className="font-display text-lg font-bold text-ink">{label}</div>
-          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-muted">
-            UP Ibalon Alumni Association
-          </div>
+          <div className="mt-1 text-xs uppercase tracking-[0.2em] text-muted">UP Ibalon</div>
         </div>
       </div>
     </div>
