@@ -7,11 +7,11 @@ import {
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore'
-import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, User, Plane, Coffee } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { MONTHS, WEEKDAYS, isToday, monthMatrix, toISO } from '../lib/dates'
-import { EVENT_META, type CalendarEvent, type EventType, type Task } from '../lib/types'
+import { EVENT_META, type CalendarEvent, type EventType, type Task, type UserProfile } from '../lib/types'
 
 type DayItem =
   | { kind: 'event'; id: string; title: string; color: string; time?: string | null }
@@ -23,6 +23,7 @@ export function Calendar() {
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() })
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [tasks, setTasks] = useState<Task[]>([])
+  const [members, setMembers] = useState<UserProfile[]>([])
   const [addFor, setAddFor] = useState<string | null>(null)
 
   useEffect(() => {
@@ -32,11 +33,18 @@ export function Calendar() {
     const unsubT = onSnapshot(collection(db, 'tasks'), (snap) =>
       setTasks(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Task, 'id'>) }))),
     )
+    const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
+      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
+    )
     return () => {
       unsubE()
       unsubT()
+      unsubU()
     }
   }, [])
+
+  const creatorName = (e: CalendarEvent) =>
+    e.createdByName || members.find((m) => m.uid === e.createdBy)?.displayName || 'Someone'
 
   const itemsByDay = useMemo(() => {
     const map: Record<string, DayItem[]> = {}
@@ -170,12 +178,15 @@ export function Calendar() {
             date={addFor}
             events={events.filter((e) => e.date === addFor)}
             tasksDue={tasks.filter((t) => t.dueDate === addFor && t.status !== 'done')}
+            creatorName={creatorName}
+            firstName={(profile?.displayName ?? 'Member').split(' ')[0]}
             onClose={() => setAddFor(null)}
             onDelete={removeEvent}
             onAdd={async (payload) => {
               await addDoc(collection(db, 'events'), {
                 ...payload,
                 createdBy: profile?.uid ?? '',
+                createdByName: profile?.displayName ?? '',
                 createdAt: serverTimestamp(),
               })
             }}
@@ -190,6 +201,8 @@ function DayDialog({
   date,
   events,
   tasksDue,
+  creatorName,
+  firstName,
   onClose,
   onAdd,
   onDelete,
@@ -197,8 +210,10 @@ function DayDialog({
   date: string
   events: CalendarEvent[]
   tasksDue: Task[]
+  creatorName: (e: CalendarEvent) => string
+  firstName: string
   onClose: () => void
-  onAdd: (p: Omit<CalendarEvent, 'id' | 'createdBy' | 'createdAt'>) => Promise<void>
+  onAdd: (p: Omit<CalendarEvent, 'id' | 'createdBy' | 'createdByName' | 'createdAt'>) => Promise<void>
   onDelete: (id: string) => void
 }) {
   const [mode, setMode] = useState<'view' | 'add'>('view')
@@ -225,6 +240,18 @@ function DayDialog({
     setType('meeting')
     setBusy(false)
     setMode('view')
+  }
+
+  const markStatus = async (kind: 'out' | 'busy') => {
+    setBusy(true)
+    await onAdd({
+      title: `${firstName} — ${kind === 'out' ? 'Out of office' : 'Busy'}`,
+      date,
+      time: null,
+      type: kind,
+      notes: '',
+    })
+    setBusy(false)
   }
 
   return (
@@ -261,7 +288,12 @@ function DayDialog({
                     className="h-2 w-2 shrink-0 rounded-full"
                     style={{ background: EVENT_META[e.type].color }}
                   />
-                  <span className="flex-1 text-sm text-ink">{e.title}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-ink">{e.title}</span>
+                    <span className="flex items-center gap-1 text-[0.65rem] text-muted">
+                      <User size={10} /> {creatorName(e)}
+                    </span>
+                  </span>
                   <span className="text-[0.7rem] uppercase tracking-wide text-muted">
                     {EVENT_META[e.type].label}
                   </span>
@@ -294,6 +326,23 @@ function DayDialog({
             >
               <Plus size={16} /> Add schedule
             </button>
+
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={() => void markStatus('out')}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-ink transition hover:border-brand/40 disabled:opacity-50"
+              >
+                <Plane size={15} /> I'm out
+              </button>
+              <button
+                onClick={() => void markStatus('busy')}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-border py-2 text-sm font-medium text-ink transition hover:border-brand/40 disabled:opacity-50"
+              >
+                <Coffee size={15} /> I'm busy
+              </button>
+            </div>
           </>
         ) : (
           <div className="mt-4 space-y-3">

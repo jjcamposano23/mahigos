@@ -307,7 +307,14 @@ export const PRIORITY_META: Record<TaskPriority, { label: string; dot: string }>
   urgent: { label: 'Urgent', dot: '#ef3422' },
 }
 
-export type EventType = 'meeting' | 'deadline' | 'event' | 'reminder' | 'holiday'
+export type EventType =
+  | 'meeting'
+  | 'deadline'
+  | 'event'
+  | 'reminder'
+  | 'holiday'
+  | 'out'
+  | 'busy'
 
 export interface CalendarEvent {
   id: string
@@ -317,6 +324,7 @@ export interface CalendarEvent {
   type: EventType
   notes?: string
   createdBy: string
+  createdByName?: string
   createdAt?: Timestamp
 }
 
@@ -326,4 +334,6 @@ export const EVENT_META: Record<EventType, { label: string; color: string }> = {
   event: { label: 'Event', color: '#2f8f6b' },
   reminder: { label: 'Reminder', color: '#e8a33d' },
   holiday: { label: 'Holiday', color: '#8b5cf6' },
+  out: { label: 'Out', color: '#ef4444' },
+  busy: { label: 'Busy', color: '#f59e0b' },
 }

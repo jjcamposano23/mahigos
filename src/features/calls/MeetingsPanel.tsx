@@ -6,6 +6,7 @@ import {
   Plus,
   ExternalLink,
   Trash2,
+  Pencil,
   X,
   Loader2,
   CalendarClock,
@@ -26,15 +27,22 @@ function fmtWhen(iso: string) {
   })
 }
 
-function ScheduleModal({ onClose }: { onClose: () => void }) {
+function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClose: () => void }) {
   const now = new Date()
-  const [topic, setTopic] = useState('')
-  const [date, setDate] = useState(now.toISOString().slice(0, 10))
-  const [time, setTime] = useState('10:00')
-  const [duration, setDuration] = useState(60)
-  const [agenda, setAgenda] = useState('')
+  const start = existing ? new Date(existing.startTime) : now
+  const [topic, setTopic] = useState(existing?.topic ?? '')
+  const [date, setDate] = useState(
+    (existing ? start : now).toISOString().slice(0, 10),
+  )
+  const [time, setTime] = useState(
+    existing ? existing.startTime.slice(11, 16) : '10:00',
+  )
+  const [duration, setDuration] = useState(existing?.duration ?? 60)
+  const [agenda, setAgenda] = useState(existing?.agenda ?? '')
+  const [invitees, setInvitees] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isEdit = !!existing
 
   const submit = async () => {
     if (!topic.trim()) return
@@ -42,19 +50,32 @@ function ScheduleModal({ onClose }: { onClose: () => void }) {
     setError(null)
     try {
       const startTime = `${date}T${time}:00`
-      const create = httpsCallable(functions, 'createZoomMeeting')
-      await create({
-        topic: topic.trim(),
-        startTime,
-        duration,
-        agenda: agenda.trim(),
-        timezone: 'Asia/Manila',
-      })
+      if (isEdit) {
+        const update = httpsCallable(functions, 'updateZoomMeeting')
+        await update({
+          id: existing!.id,
+          topic: topic.trim(),
+          startTime,
+          duration,
+          agenda: agenda.trim(),
+          timezone: 'Asia/Manila',
+        })
+      } else {
+        const create = httpsCallable(functions, 'createZoomMeeting')
+        await create({
+          topic: topic.trim(),
+          startTime,
+          duration,
+          agenda: agenda.trim(),
+          timezone: 'Asia/Manila',
+          invitees,
+        })
+      }
       onClose()
     } catch (e) {
       setError(
         (e as { message?: string }).message ||
-          'Could not create the Zoom meeting. Check the Zoom setup and try again.',
+          'Could not save the Zoom meeting. Check the Zoom setup and try again.',
       )
     } finally {
       setBusy(false)
@@ -71,13 +92,17 @@ function ScheduleModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
-          <h3 className="font-display text-lg font-bold text-ink">Schedule a Zoom meeting</h3>
+          <h3 className="font-display text-lg font-bold text-ink">
+            {isEdit ? 'Edit Zoom meeting' : 'Schedule a Zoom meeting'}
+          </h3>
           <button onClick={onClose} className="text-muted hover:text-ink">
             <X size={18} />
           </button>
         </div>
         <p className="mt-1 text-xs text-muted">
-          Creates a real Zoom meeting on the UPIAA OSEC account and shares it with the team.
+          {isEdit
+            ? 'Updates the meeting on Zoom and the shared calendar.'
+            : 'Creates a real Zoom meeting on the UPIAA OSEC account and shares it with the team.'}
         </p>
 
         <label className="mt-4 block text-xs font-semibold text-muted">Topic</label>
@@ -114,6 +139,23 @@ function ScheduleModal({ onClose }: { onClose: () => void }) {
           placeholder="What will you cover?"
         />
 
+        {!isEdit && (
+          <>
+            <label className="mt-3 block text-xs font-semibold text-muted">
+              Invite emails (optional)
+            </label>
+            <input
+              value={invitees}
+              onChange={(e) => setInvitees(e.target.value)}
+              className={field}
+              placeholder="name@email.com, another@email.com"
+            />
+            <span className="mt-1 block text-[0.7rem] text-muted">
+              We'll email them the join link from the OSEC account.
+            </span>
+          </>
+        )}
+
         {error && <p className="mt-3 text-xs text-brand">{error}</p>}
 
         <div className="mt-5 flex justify-end gap-2">
@@ -126,7 +168,7 @@ function ScheduleModal({ onClose }: { onClose: () => void }) {
             className="flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
           >
             {busy ? <Loader2 size={15} className="animate-spin" /> : <Video size={15} />}
-            {busy ? 'Creating…' : 'Create meeting'}
+            {busy ? 'Saving…' : isEdit ? 'Save changes' : 'Create meeting'}
           </button>
         </div>
       </div>
@@ -139,6 +181,7 @@ export function MeetingsPanel() {
   const isAdmin = profile?.role === 'admin'
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [scheduling, setScheduling] = useState(false)
+  const [editing, setEditing] = useState<Meeting | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
@@ -217,14 +260,23 @@ export function MeetingsPanel() {
             )}
             <div className="flex-1" />
             {canManage && (
-              <button
-                onClick={() => remove(m)}
-                disabled={deleting === m.id}
-                title="Cancel meeting"
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand disabled:opacity-50"
-              >
-                {deleting === m.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              </button>
+              <>
+                <button
+                  onClick={() => setEditing(m)}
+                  title="Edit meeting"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-brand"
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => remove(m)}
+                  disabled={deleting === m.id}
+                  title="Cancel meeting"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand disabled:opacity-50"
+                >
+                  {deleting === m.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                </button>
+              </>
             )}
           </div>
         )}
@@ -265,6 +317,7 @@ export function MeetingsPanel() {
       )}
 
       {scheduling && <ScheduleModal onClose={() => setScheduling(false)} />}
+      {editing && <ScheduleModal existing={editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }

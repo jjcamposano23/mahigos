@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore'
-import { Mail, GraduationCap, CalendarClock, Pencil, X } from 'lucide-react'
+import { Mail, GraduationCap, CalendarClock, Pencil, X, Plus, Trash2 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { Avatar, AVATAR_PRESETS } from '../components/Avatar'
@@ -165,11 +165,131 @@ function MemberEditor({
   )
 }
 
+function ScheduleEditor({ member, onClose }: { member: UserProfile; onClose: () => void }) {
+  const [rows, setRows] = useState<ScheduleBlock[]>(member.schedule ?? [])
+  const [saving, setSaving] = useState(false)
+
+  const update = (i: number, patch: Partial<ScheduleBlock>) =>
+    setRows((r) => r.map((b, j) => (j === i ? { ...b, ...patch } : b)))
+  const addRow = () =>
+    setRows((r) => [...r, { day: 1, start: '09:00', end: '10:00', title: '', room: '' }])
+  const removeRow = (i: number) => setRows((r) => r.filter((_, j) => j !== i))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const clean = rows
+        .filter((b) => b.title.trim())
+        .map((b) => ({
+          day: b.day,
+          start: b.start,
+          end: b.end,
+          title: b.title.trim(),
+          room: b.room?.trim() || '',
+        }))
+      await setDoc(doc(db, 'users', member.uid), { schedule: clean }, { merge: true })
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between">
+          <h3 className="font-display text-lg font-bold text-ink">
+            Edit schedule — {member.displayName.split(' ')[0]}
+          </h3>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={18} />
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-muted">Add class, work, or free-time blocks.</p>
+
+        <div className="mt-4 space-y-2">
+          {rows.length === 0 && (
+            <p className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted">
+              No blocks yet. Add your first below.
+            </p>
+          )}
+          {rows.map((b, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-bg p-2">
+              <select
+                value={b.day}
+                onChange={(e) => update(i, { day: Number(e.target.value) })}
+                className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-ink outline-none"
+              >
+                {DAY_NAMES.map((n, d) => (
+                  <option key={d} value={d}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="time"
+                value={b.start}
+                onChange={(e) => update(i, { start: e.target.value })}
+                className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-ink outline-none"
+              />
+              <input
+                type="time"
+                value={b.end}
+                onChange={(e) => update(i, { end: e.target.value })}
+                className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-ink outline-none"
+              />
+              <input
+                value={b.title}
+                onChange={(e) => update(i, { title: e.target.value })}
+                placeholder="Subject / activity"
+                className="min-w-24 flex-1 rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink outline-none"
+              />
+              <input
+                value={b.room ?? ''}
+                onChange={(e) => update(i, { room: e.target.value })}
+                placeholder="Room"
+                className="w-20 rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink outline-none"
+              />
+              <button onClick={() => removeRow(i)} className="text-muted hover:text-brand" title="Remove">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={addRow}
+          className="mt-2 flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-sm font-medium text-muted transition hover:border-brand/40 hover:text-brand"
+        >
+          <Plus size={14} /> Add block
+        </button>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg px-3 py-2 text-sm font-medium text-muted hover:text-ink">
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Save schedule'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function Team() {
   const { profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
   const [members, setMembers] = useState<UserProfile[]>([])
   const [editing, setEditing] = useState<UserProfile | null>(null)
+  const [editingSchedule, setEditingSchedule] = useState<UserProfile | null>(null)
 
   useEffect(() => {
     return onSnapshot(collection(db, 'users'), (snap) =>
@@ -218,23 +338,33 @@ export function Team() {
                   )}
                 </div>
               </div>
-              {isAdmin && (
-                <button
-                  onClick={() => setEditing(m)}
-                  title="Edit member"
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:text-brand"
-                >
-                  <Pencil size={13} /> Edit
-                </button>
-              )}
+              <div className="flex shrink-0 items-center gap-1.5">
+                {(isAdmin || m.uid === profile?.uid) && (
+                  <button
+                    onClick={() => setEditingSchedule(m)}
+                    title="Edit schedule"
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:text-brand"
+                  >
+                    <CalendarClock size={13} /> Schedule
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => setEditing(m)}
+                    title="Edit member"
+                    className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:text-brand"
+                  >
+                    <Pencil size={13} /> Edit
+                  </button>
+                )}
+              </div>
             </div>
 
             {m.schedule && m.schedule.length > 0 && (
               <div className="mt-4 border-t border-border pt-4">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-ink">
                   <CalendarClock size={15} className="text-brand" />
-                  Class schedule
-                  <span className="text-xs font-normal text-muted">· 1st Sem 2026–2027</span>
+                  Weekly schedule
                 </div>
                 <WeeklySchedule schedule={m.schedule} />
               </div>
@@ -244,6 +374,9 @@ export function Team() {
       </div>
 
       {editing && <MemberEditor member={editing} onClose={() => setEditing(null)} />}
+      {editingSchedule && (
+        <ScheduleEditor member={editingSchedule} onClose={() => setEditingSchedule(null)} />
+      )}
     </div>
   )
 }

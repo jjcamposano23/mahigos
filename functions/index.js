@@ -65,9 +65,20 @@ async function zoomToken() {
 
 const ZOOM_SECRETS = [ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET]
 
-exports.createZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
+function parseEmails(input) {
+  if (!input) return []
+  const arr = Array.isArray(input) ? input : String(input).split(/[\s,;]+/)
+  return Array.from(
+    new Set(arr.map((e) => e.trim().toLowerCase()).filter((e) => /.+@.+\..+/.test(e))),
+  )
+}
+
+exports.createZoomMeeting = onCall(
+  { secrets: [...ZOOM_SECRETS, GMAIL_APP_PASSWORD] },
+  async (req) => {
   const email = assertAllowed(req)
   const { topic, startTime, duration, agenda, timezone } = req.data || {}
+  const invitees = parseEmails((req.data || {}).invitees)
   if (!topic || !startTime) {
     throw new HttpsError('invalid-argument', 'A topic and start time are required.')
   }
@@ -88,6 +99,7 @@ exports.createZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
         waiting_room: false,
         mute_upon_entry: true,
         approval_type: 2,
+        meeting_invitees: invitees.map((e) => ({ email: e })),
       },
     }),
   })
@@ -121,10 +133,28 @@ exports.createZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
     startUrl: m.start_url,
     password: m.password || '',
     eventId: eventRef.id,
+    invitees,
     createdBy: req.auth.uid,
     createdByEmail: email,
     createdAt: FieldValue.serverTimestamp(),
   })
+
+  // Email the invitees the join details from the OSEC Gmail.
+  if (invitees.length) {
+    const when = new Date(startTime).toLocaleString('en-US', { timeZone: timezone || TZ })
+    const body = `
+      <p style="margin:0 0 10px">You're invited to a Zoom meeting:</p>
+      <div style="border-left:3px solid #ef3422;background:#fdece9;padding:10px 12px;border-radius:6px">
+        <div style="font-weight:bold;font-size:15px">${topic}</div>
+        <div style="color:#555;font-size:13px;margin-top:4px">${when} (${timezone || TZ}) · ${duration || 60} min</div>
+        ${agenda ? `<div style="color:#666;font-size:13px;margin-top:6px">${agenda}</div>` : ''}
+        <div style="margin-top:10px"><a href="${m.join_url}" style="color:#ef3422;font-weight:bold">Join the meeting</a>${m.password ? ` · Passcode: ${m.password}` : ''}</div>
+      </div>`
+    await sendMail(invitees, `Zoom invite: ${topic}`, shell('You are invited to a meeting', body)).catch(
+      () => {},
+    )
+  }
+
   return { id: docRef.id, joinUrl: m.join_url, startUrl: m.start_url }
 })
 
