@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   increment,
   onSnapshot,
@@ -27,12 +28,14 @@ export function Messages() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [threadId, setThreadId] = useState<string | null>(null)
+  const [channelsLoaded, setChannelsLoaded] = useState(false)
   const seededRef = useRef(false)
 
   useEffect(() => {
-    const unsubC = onSnapshot(collection(db, 'channels'), (snap) =>
-      setAllChannels(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Channel, 'id'>) }))),
-    )
+    const unsubC = onSnapshot(collection(db, 'channels'), (snap) => {
+      setAllChannels(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Channel, 'id'>) })))
+      setChannelsLoaded(true)
+    })
     const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
       setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
     )
@@ -59,12 +62,12 @@ export function Messages() {
     [allChannels, user],
   )
 
-  // Seed a #general channel the first time the workspace is empty
+  // Seed a #general channel only once the channels snapshot has truly loaded
+  // and the workspace has no channels yet (prevents duplicate #general on revisit).
   useEffect(() => {
-    if (seededRef.current || !user) return
-    if (allChannels.length > 0) return
-    // only seed once channels snapshot has actually arrived (empty)
+    if (!channelsLoaded || !user || seededRef.current) return
     seededRef.current = true
+    if (channels.length > 0) return
     void addDoc(collection(db, 'channels'), {
       name: 'general',
       description: 'Workspace-wide announcements and chat',
@@ -73,7 +76,17 @@ export function Messages() {
       createdBy: user.uid,
       createdAt: serverTimestamp(),
     })
-  }, [allChannels, user])
+  }, [channelsLoaded, channels, user])
+
+  // Admin-only cleanup: collapse any accidental duplicate #general channels,
+  // keeping the earliest-created one.
+  useEffect(() => {
+    if (!channelsLoaded || profile?.role !== 'admin') return
+    const generals = channels
+      .filter((c) => c.name === 'general')
+      .sort((a, b) => (a.createdAt?.toMillis?.() ?? 0) - (b.createdAt?.toMillis?.() ?? 0))
+    generals.slice(1).forEach((c) => void deleteDoc(doc(db, 'channels', c.id)))
+  }, [channelsLoaded, channels, profile])
 
   // default selection
   useEffect(() => {

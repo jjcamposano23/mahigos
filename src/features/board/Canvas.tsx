@@ -9,11 +9,28 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore'
-import { Trash2, GripVertical, StickyNote } from 'lucide-react'
+import {
+  MousePointer2,
+  StickyNote,
+  Square,
+  Circle,
+  Diamond,
+  Type,
+  MoveUpRight,
+  Trash2,
+} from 'lucide-react'
 import { db } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { isOnline } from '../../lib/presence'
-import { NOTE_COLORS, type BoardCursor, type BoardNote } from '../../lib/types'
+import {
+  NOTE_COLORS,
+  STROKE_COLORS,
+  type BoardCursor,
+  type BoardItem,
+  type BoardItemType,
+} from '../../lib/types'
+
+type Tool = 'select' | BoardItemType
 
 const CURSOR_COLORS = ['#ef3422', '#2f6df0', '#2f8f6b', '#e8a33d', '#8b5cf6', '#0ea5a4', '#db2777']
 function colorFor(uid: string) {
@@ -22,18 +39,49 @@ function colorFor(uid: string) {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
+const DEFAULTS: Record<BoardItemType, Partial<BoardItem>> = {
+  note: { w: 170, h: 130, color: '#ffe08a' },
+  rect: { w: 150, h: 90, color: '#c7ddff' },
+  ellipse: { w: 130, h: 110, color: '#c9ecd0' },
+  diamond: { w: 130, h: 110, color: '#e6d2ff' },
+  text: { w: 180, h: 40, color: '#1c1a19' },
+  arrow: { w: 0, h: 0, color: '#1c1a19' },
+}
+
+type Interaction =
+  | { mode: 'move'; id: string; sx: number; sy: number; orig: BoardItem }
+  | { mode: 'resize'; id: string; sx: number; sy: number; orig: BoardItem }
+  | { mode: 'endpoint'; id: string; which: 'start' | 'end' }
+  | { mode: 'draw-arrow'; id: string }
+  | null
+
+const TOOLS: { tool: Tool; icon: typeof Square; label: string }[] = [
+  { tool: 'select', icon: MousePointer2, label: 'Select' },
+  { tool: 'note', icon: StickyNote, label: 'Sticky note' },
+  { tool: 'rect', icon: Square, label: 'Rectangle' },
+  { tool: 'ellipse', icon: Circle, label: 'Ellipse' },
+  { tool: 'diamond', icon: Diamond, label: 'Diamond' },
+  { tool: 'text', icon: Type, label: 'Text' },
+  { tool: 'arrow', icon: MoveUpRight, label: 'Arrow' },
+]
+
 export function Canvas({ boardId }: { boardId: string }) {
   const { user, profile } = useAuth()
   const canvasRef = useRef<HTMLDivElement>(null)
-  const [notes, setNotes] = useState<BoardNote[]>([])
+  const col = collection(db, 'whiteboards', boardId, 'items')
+
+  const [items, setItems] = useState<BoardItem[]>([])
   const [cursors, setCursors] = useState<(BoardCursor & { uid: string })[]>([])
-  const drag = useRef<{ id: string; dx: number; dy: number } | null>(null)
+  const [tool, setTool] = useState<Tool>('select')
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const interaction = useRef<Interaction>(null)
   const lastCursorWrite = useRef(0)
   const myColor = colorFor(user?.uid ?? 'x')
 
   useEffect(() => {
-    const unsubN = onSnapshot(collection(db, 'whiteboards', boardId, 'notes'), (snap) =>
-      setNotes(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<BoardNote, 'id'>) }))),
+    const unsubN = onSnapshot(col, (snap) =>
+      setItems(snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<BoardItem, 'id'>) }))),
     )
     const unsubC = onSnapshot(collection(db, 'whiteboards', boardId, 'cursors'), (snap) =>
       setCursors(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as BoardCursor) }))),
@@ -43,6 +91,7 @@ export function Canvas({ boardId }: { boardId: string }) {
       unsubC()
       if (user) void deleteDoc(doc(db, 'whiteboards', boardId, 'cursors', user.uid))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, user])
 
   const toCanvas = (clientX: number, clientY: number) => {
@@ -50,29 +99,102 @@ export function Canvas({ boardId }: { boardId: string }) {
     return { x: clientX - r.left, y: clientY - r.top }
   }
 
-  const addNote = (clientX: number, clientY: number) => {
-    const { x, y } = toCanvas(clientX, clientY)
-    void addDoc(collection(db, 'whiteboards', boardId, 'notes'), {
-      x: x - 80,
-      y: y - 20,
-      w: 160,
-      h: 120,
+  const patch = (id: string, p: Partial<BoardItem>) => void updateDoc(doc(col, id), p)
+  const del = (id: string) => {
+    void deleteDoc(doc(col, id))
+    setSelectedId(null)
+  }
+
+  const createAt = async (type: BoardItemType, x: number, y: number) => {
+    const d = DEFAULTS[type]
+    const w = d.w ?? 140
+    const h = d.h ?? 90
+    const refDoc = await addDoc(col, {
+      type,
+      x: Math.round(x - w / 2),
+      y: Math.round(y - h / 2),
+      w,
+      h,
       text: '',
-      color: NOTE_COLORS[Math.floor(Math.random() * 5)],
+      color: d.color ?? '#c7ddff',
       authorUid: user?.uid ?? '',
     })
+    setSelectedId(refDoc.id)
+    setTool('select')
+    if (type === 'text' || type === 'note') setEditingId(refDoc.id)
+  }
+
+  // ---- pointer handling on the canvas ----
+  const onCanvasPointerDown = (e: React.PointerEvent) => {
+    if (e.target !== canvasRef.current) return // only when hitting empty canvas
+    const { x, y } = toCanvas(e.clientX, e.clientY)
+    setEditingId(null)
+    if (tool === 'select') {
+      setSelectedId(null)
+      return
+    }
+    if (tool === 'arrow') {
+      addDoc(col, {
+        type: 'arrow',
+        x,
+        y,
+        w: 0,
+        h: 0,
+        x2: x,
+        y2: y,
+        text: '',
+        color: '#1c1a19',
+        authorUid: user?.uid ?? '',
+      }).then((refDoc) => {
+        interaction.current = { mode: 'draw-arrow', id: refDoc.id }
+        setSelectedId(refDoc.id)
+      })
+      return
+    }
+    void createAt(tool, x, y)
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
     const { x, y } = toCanvas(e.clientX, e.clientY)
+    const it = interaction.current
 
-    // drag a note
-    if (drag.current) {
-      const { id, dx, dy } = drag.current
-      setNotes((ns) => ns.map((n) => (n.id === id ? { ...n, x: x - dx, y: y - dy } : n)))
+    if (it) {
+      if (it.mode === 'move') {
+        const nx = it.orig.x + (x - it.sx)
+        const ny = it.orig.y + (y - it.sy)
+        setItems((arr) =>
+          arr.map((i) => {
+            if (i.id !== it.id) return i
+            if (i.type === 'arrow')
+              return {
+                ...i,
+                x: nx,
+                y: ny,
+                x2: (it.orig.x2 ?? 0) + (x - it.sx),
+                y2: (it.orig.y2 ?? 0) + (y - it.sy),
+              }
+            return { ...i, x: nx, y: ny }
+          }),
+        )
+      } else if (it.mode === 'resize') {
+        setItems((arr) =>
+          arr.map((i) =>
+            i.id === it.id
+              ? { ...i, w: Math.max(40, it.orig.w + (x - it.sx)), h: Math.max(28, it.orig.h + (y - it.sy)) }
+              : i,
+          ),
+        )
+      } else if (it.mode === 'endpoint') {
+        setItems((arr) =>
+          arr.map((i) =>
+            i.id === it.id ? { ...i, ...(it.which === 'start' ? { x, y } : { x2: x, y2: y }) } : i,
+          ),
+        )
+      } else if (it.mode === 'draw-arrow') {
+        setItems((arr) => arr.map((i) => (i.id === it.id ? { ...i, x2: x, y2: y } : i)))
+      }
     }
 
-    // broadcast cursor (throttled)
     const now = Date.now()
     if (user && now - lastCursorWrite.current > 90) {
       lastCursorWrite.current = now
@@ -86,69 +208,196 @@ export function Canvas({ boardId }: { boardId: string }) {
     }
   }
 
-  const startDrag = (e: React.PointerEvent, n: BoardNote) => {
+  const commit = () => {
+    const it = interaction.current
+    interaction.current = null
+    if (!it) return
+    const cur = items.find((i) => i.id === it.id)
+    if (!cur) return
+    if (it.mode === 'move') patch(it.id, cur.type === 'arrow' ? { x: cur.x, y: cur.y, x2: cur.x2, y2: cur.y2 } : { x: cur.x, y: cur.y })
+    else if (it.mode === 'resize') patch(it.id, { w: cur.w, h: cur.h })
+    else if (it.mode === 'endpoint' || it.mode === 'draw-arrow') patch(it.id, { x: cur.x, y: cur.y, x2: cur.x2, y2: cur.y2 })
+  }
+
+  const startMove = (e: React.PointerEvent, item: BoardItem) => {
+    if (tool !== 'select' || editingId === item.id) return
+    e.stopPropagation()
+    setSelectedId(item.id)
+    const { x, y } = toCanvas(e.clientX, e.clientY)
+    interaction.current = { mode: 'move', id: item.id, sx: x, sy: y, orig: item }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  const startResize = (e: React.PointerEvent, item: BoardItem) => {
     e.stopPropagation()
     const { x, y } = toCanvas(e.clientX, e.clientY)
-    drag.current = { id: n.id, dx: x - n.x, dy: y - n.y }
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    interaction.current = { mode: 'resize', id: item.id, sx: x, sy: y, orig: item }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
-  const endDrag = () => {
-    if (!drag.current) return
-    const n = notes.find((x) => x.id === drag.current!.id)
-    if (n) void updateDoc(doc(db, 'whiteboards', boardId, 'notes', n.id), { x: n.x, y: n.y })
-    drag.current = null
-  }
+  // keyboard delete
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (editingId) return
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault()
+        del(selectedId)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId, editingId])
 
-  const saveText = (id: string, text: string) =>
-    void updateDoc(doc(db, 'whiteboards', boardId, 'notes', id), { text })
-  const setColor = (id: string, color: string) =>
-    void updateDoc(doc(db, 'whiteboards', boardId, 'notes', id), { color })
-  const del = (id: string) => void deleteDoc(doc(db, 'whiteboards', boardId, 'notes', id))
+  const selected = items.find((i) => i.id === selectedId) || null
+  const paletteForSelected = selected
+    ? selected.type === 'text' || selected.type === 'arrow'
+      ? STROKE_COLORS
+      : NOTE_COLORS
+    : []
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-auto bg-surface-2/40">
+    <div className="relative min-h-0 flex-1 overflow-auto">
+      {/* Toolbar */}
+      <div className="pointer-events-auto absolute left-3 top-3 z-20 flex items-center gap-1 rounded-xl border border-border bg-surface/95 p-1 shadow-md backdrop-blur">
+        {TOOLS.map(({ tool: t, icon: Icon, label }) => (
+          <button
+            key={t}
+            onClick={() => setTool(t)}
+            title={label}
+            className={`grid h-9 w-9 place-items-center rounded-lg transition ${
+              tool === t ? 'bg-brand text-white' : 'text-muted hover:bg-surface-2 hover:text-ink'
+            }`}
+          >
+            <Icon size={17} />
+          </button>
+        ))}
+        {selected && (
+          <>
+            <span className="mx-1 h-6 w-px bg-border" />
+            {paletteForSelected.map((c) => (
+              <button
+                key={c}
+                onClick={() => patch(selected.id, { color: c })}
+                className="h-5 w-5 rounded-full border border-black/10 transition hover:scale-110"
+                style={{ background: c }}
+                title="Colour"
+              />
+            ))}
+            <button
+              onClick={() => del(selected.id)}
+              title="Delete"
+              className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand"
+            >
+              <Trash2 size={16} />
+            </button>
+          </>
+        )}
+      </div>
+
       <div
         ref={canvasRef}
-        onDoubleClick={(e) => addNote(e.clientX, e.clientY)}
+        onPointerDown={onCanvasPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        className="banig relative h-[2000px] w-[3000px]"
-        style={{ backgroundColor: 'var(--bg)' }}
+        onPointerUp={commit}
+        onPointerLeave={commit}
+        className="wb-grid relative h-[2000px] w-[3000px]"
+        style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
       >
-        {notes.map((n) => (
-          <div
-            key={n.id}
-            className="group absolute flex flex-col rounded-lg shadow-md"
-            style={{ left: n.x, top: n.y, width: n.w, minHeight: n.h, background: n.color }}
-          >
-            <div
-              onPointerDown={(e) => startDrag(e, n)}
-              className="flex cursor-grab items-center justify-between rounded-t-lg px-1.5 py-1 active:cursor-grabbing"
-            >
-              <GripVertical size={13} className="text-black/30" />
-              <button onClick={() => del(n.id)} className="text-black/30 hover:text-brand">
-                <Trash2 size={12} />
-              </button>
-            </div>
-            <textarea
-              defaultValue={n.text}
-              onBlur={(e) => saveText(n.id, e.target.value)}
-              placeholder="Type…"
-              className="flex-1 resize-none bg-transparent px-2 pb-2 text-sm text-black/80 outline-none placeholder:text-black/30"
-            />
-            <div className="flex gap-1 px-2 pb-1.5 opacity-0 transition group-hover:opacity-100">
-              {NOTE_COLORS.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setColor(n.id, c)}
-                  className="h-3.5 w-3.5 rounded-full border border-black/10"
-                  style={{ background: c }}
+        {/* arrows layer */}
+        <svg className="pointer-events-none absolute inset-0 h-full w-full">
+          <defs>
+            {STROKE_COLORS.map((c) => (
+              <marker
+                key={c}
+                id={`arrow-${c.replace('#', '')}`}
+                markerWidth="10"
+                markerHeight="10"
+                refX="7"
+                refY="3"
+                orient="auto"
+                markerUnits="strokeWidth"
+              >
+                <path d="M0,0 L7,3 L0,6 Z" fill={c} />
+              </marker>
+            ))}
+          </defs>
+          {items
+            .filter((i) => i.type === 'arrow')
+            .map((a) => (
+              <g key={a.id}>
+                <line
+                  x1={a.x}
+                  y1={a.y}
+                  x2={a.x2}
+                  y2={a.y2}
+                  stroke="transparent"
+                  strokeWidth={14}
+                  className="pointer-events-auto cursor-move"
+                  onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)}
                 />
-              ))}
-            </div>
-          </div>
-        ))}
+                <line
+                  x1={a.x}
+                  y1={a.y}
+                  x2={a.x2}
+                  y2={a.y2}
+                  stroke={a.color}
+                  strokeWidth={2.5}
+                  markerEnd={`url(#arrow-${a.color.replace('#', '')})`}
+                />
+                {selectedId === a.id && (
+                  <>
+                    <circle
+                      cx={a.x}
+                      cy={a.y}
+                      r={6}
+                      fill="#fff"
+                      stroke="var(--brand)"
+                      strokeWidth={2}
+                      className="pointer-events-auto cursor-crosshair"
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        interaction.current = { mode: 'endpoint', id: a.id, which: 'start' }
+                      }}
+                    />
+                    <circle
+                      cx={a.x2}
+                      cy={a.y2}
+                      r={6}
+                      fill="#fff"
+                      stroke="var(--brand)"
+                      strokeWidth={2}
+                      className="pointer-events-auto cursor-crosshair"
+                      onPointerDown={(e) => {
+                        e.stopPropagation()
+                        interaction.current = { mode: 'endpoint', id: a.id, which: 'end' }
+                      }}
+                    />
+                  </>
+                )}
+              </g>
+            ))}
+        </svg>
+
+        {/* items */}
+        {items
+          .filter((i) => i.type !== 'arrow')
+          .map((it) => (
+            <ItemView
+              key={it.id}
+              item={it}
+              selected={selectedId === it.id}
+              editing={editingId === it.id}
+              onPointerDown={(e) => startMove(e, it)}
+              onDoubleClick={() => {
+                setSelectedId(it.id)
+                setEditingId(it.id)
+              }}
+              onEdit={(text) => patch(it.id, { text })}
+              onEditDone={() => setEditingId(null)}
+              onResize={(e) => startResize(e, it)}
+            />
+          ))}
 
         {/* live cursors */}
         {cursors
@@ -157,7 +406,7 @@ export function Canvas({ boardId }: { boardId: string }) {
             <div
               key={c.uid}
               className="pointer-events-none absolute z-50 transition-transform duration-75"
-              style={{ left: c.x, top: c.y, transform: 'translate(-2px, -2px)' }}
+              style={{ left: c.x, top: c.y }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill={c.color}>
                 <path d="M4 2 L20 12 L13 13 L9 21 Z" />
@@ -173,10 +422,102 @@ export function Canvas({ boardId }: { boardId: string }) {
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-surface/90 px-3 py-1.5 text-xs text-muted shadow-sm">
-        <span className="inline-flex items-center gap-1.5">
-          <StickyNote size={13} className="text-brand" /> Double-click anywhere to add a sticky note
-        </span>
+        Pick a tool, then click the canvas · double-click to edit text · Del to remove
       </div>
+    </div>
+  )
+}
+
+function ItemView({
+  item,
+  selected,
+  editing,
+  onPointerDown,
+  onDoubleClick,
+  onEdit,
+  onEditDone,
+  onResize,
+}: {
+  item: BoardItem
+  selected: boolean
+  editing: boolean
+  onPointerDown: (e: React.PointerEvent) => void
+  onDoubleClick: () => void
+  onEdit: (text: string) => void
+  onEditDone: () => void
+  onResize: (e: React.PointerEvent) => void
+}) {
+  const isText = item.type === 'text'
+  const base = 'absolute flex items-center justify-center overflow-hidden'
+  const shapeStyle: React.CSSProperties = {
+    left: item.x,
+    top: item.y,
+    width: item.w,
+    height: item.h,
+  }
+
+  let boxClass = ''
+  const inner: React.CSSProperties = {}
+  if (item.type === 'note') {
+    boxClass = 'rounded-lg shadow-md'
+    inner.background = item.color
+  } else if (item.type === 'rect') {
+    boxClass = 'rounded-md border'
+    inner.background = item.color
+    inner.borderColor = 'rgba(0,0,0,0.15)'
+  } else if (item.type === 'ellipse') {
+    boxClass = 'rounded-full border'
+    inner.background = item.color
+    inner.borderColor = 'rgba(0,0,0,0.15)'
+  } else if (item.type === 'diamond') {
+    // background drawn by the clip-path span below
+  } else if (isText) {
+    boxClass = 'rounded'
+  }
+
+  return (
+    <div
+      className={`${base} ${boxClass} ${selected ? 'ring-2 ring-brand' : ''}`}
+      style={{ ...shapeStyle, ...inner, cursor: editing ? 'text' : 'move' }}
+      onPointerDown={onPointerDown}
+      onDoubleClick={onDoubleClick}
+    >
+      {item.type === 'diamond' && (
+        <span
+          className="pointer-events-none absolute inset-0"
+          style={{ background: item.color, clipPath: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)', border: '1px solid rgba(0,0,0,0.15)' }}
+        />
+      )}
+
+      {editing ? (
+        <textarea
+          autoFocus
+          defaultValue={item.text}
+          onBlur={(e) => {
+            onEdit(e.target.value)
+            onEditDone()
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="relative z-10 h-full w-full resize-none bg-transparent px-2 py-1 text-center text-sm outline-none"
+          style={{ color: isText ? item.color : 'rgba(0,0,0,0.8)' }}
+        />
+      ) : (
+        <span
+          className={`relative z-10 whitespace-pre-wrap px-2 text-sm ${isText ? 'font-medium' : ''} ${
+            !item.text ? 'opacity-40' : ''
+          }`}
+          style={{ color: isText ? item.color : 'rgba(0,0,0,0.8)' }}
+        >
+          {item.text || (isText ? 'Text' : '')}
+        </span>
+      )}
+
+      {selected && !editing && (
+        <span
+          onPointerDown={onResize}
+          className="absolute -bottom-1 -right-1 z-20 h-3 w-3 cursor-se-resize rounded-full border border-white bg-brand"
+        />
+      )}
     </div>
   )
 }

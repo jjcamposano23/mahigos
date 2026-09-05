@@ -92,18 +92,26 @@ export interface Whiteboard {
   createdAt?: Timestamp
 }
 
-export interface BoardNote {
+export type BoardItemType = 'note' | 'rect' | 'ellipse' | 'diamond' | 'text' | 'arrow'
+
+export interface BoardItem {
   id: string
+  type: BoardItemType
   x: number
   y: number
   w: number
   h: number
-  text: string
+  x2?: number // arrow end point
+  y2?: number
+  text?: string
   color: string
   authorUid: string
 }
 
+// Sticky-note / shape fill palette (light, Miro-like)
 export const NOTE_COLORS = ['#ffe08a', '#ffd0c7', '#c9ecd0', '#c7ddff', '#e6d2ff', '#ffffff']
+// Stronger palette for arrows and text
+export const STROKE_COLORS = ['#1c1a19', '#ef3422', '#2f6df0', '#2f8f6b', '#8b5cf6']
 
 export interface BoardCursor {
   x: number

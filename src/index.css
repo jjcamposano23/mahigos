@@ -22,6 +22,7 @@
 
   --ok: #2f8f6b; /* single supporting accent (green) */
   --ring: rgba(239, 52, 34, 0.35);
+  --grid: rgba(20, 18, 16, 0.06); /* whiteboard grid lines */
 }
 
 :root.dark {
@@ -38,6 +39,7 @@
 
   --ok: #45b98d;
   --ring: rgba(255, 74, 56, 0.4);
+  --grid: rgba(255, 255, 255, 0.06);
 }
 
 @theme inline {
@@ -96,6 +98,15 @@ body {
     ),
     repeating-linear-gradient(-45deg, var(--ring) 0 1px, transparent 1px 14px);
   background-size: 20px 20px;
+}
+
+/* Light square grid for the whiteboard (Miro-like) */
+.wb-grid {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 26px 26px;
 }
 
 /* Concentric-diamond weave used on hero corners */
