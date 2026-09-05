@@ -13,16 +13,22 @@ export function ThreadPanel({
   root,
   replies,
   memberMap,
+  currentUid,
   onClose,
   onSendText,
   onSendClip,
+  onEdit,
+  onDelete,
 }: {
   root: Message
   replies: Message[]
   memberMap: Record<string, UserProfile>
+  currentUid?: string
   onClose: () => void
   onSendText: (text: string) => Promise<void>
   onSendClip: (blob: Blob) => Promise<void>
+  onEdit?: (id: string, text: string) => void
+  onDelete?: (m: Message) => void
 }) {
   const author = memberMap[root.authorUid]
   return (
@@ -55,7 +61,14 @@ export function ThreadPanel({
         </div>
       </div>
 
-      <MessageList messages={replies} memberMap={memberMap} showThreads={false} />
+      <MessageList
+        messages={replies}
+        memberMap={memberMap}
+        currentUid={currentUid}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        showThreads={false}
+      />
 
       <Composer placeholder="Reply…" onSendText={onSendText} onSendClip={onSendClip} />
     </aside>

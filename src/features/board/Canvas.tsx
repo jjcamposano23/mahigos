@@ -17,7 +17,15 @@ import {
   Diamond,
   Type,
   MoveUpRight,
+  Minus,
   Trash2,
+  Shapes,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
+  Triangle,
+  SquareRoundCorner,
+  X,
 } from 'lucide-react'
 import { db } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
@@ -39,24 +47,21 @@ function colorFor(uid: string) {
   return CURSOR_COLORS[h % CURSOR_COLORS.length]
 }
 
-const DEFAULTS: Record<BoardItemType, Partial<BoardItem>> = {
+const CONNECTORS: BoardItemType[] = ['arrow', 'line']
+const DEFAULTS: Record<BoardItemType, { w: number; h: number; color: string }> = {
   note: { w: 170, h: 130, color: '#ffe08a' },
   rect: { w: 150, h: 90, color: '#c7ddff' },
-  ellipse: { w: 130, h: 110, color: '#c9ecd0' },
+  round: { w: 150, h: 90, color: '#c9ecd0' },
+  ellipse: { w: 130, h: 110, color: '#ffd0c7' },
   diamond: { w: 130, h: 110, color: '#e6d2ff' },
+  triangle: { w: 130, h: 110, color: '#c7ddff' },
   text: { w: 180, h: 40, color: '#1c1a19' },
   arrow: { w: 0, h: 0, color: '#1c1a19' },
+  line: { w: 0, h: 0, color: '#1c1a19' },
 }
 
-type Interaction =
-  | { mode: 'move'; id: string; sx: number; sy: number; orig: BoardItem }
-  | { mode: 'resize'; id: string; sx: number; sy: number; orig: BoardItem }
-  | { mode: 'endpoint'; id: string; which: 'start' | 'end' }
-  | { mode: 'draw-arrow'; id: string }
-  | null
-
-const TOOLS: { tool: Tool; icon: typeof Square; label: string }[] = [
-  { tool: 'select', icon: MousePointer2, label: 'Select' },
+const TOOLBAR: { tool: Tool; icon: typeof Square; label: string }[] = [
+  { tool: 'select', icon: MousePointer2, label: 'Select (left-drag to marquee)' },
   { tool: 'note', icon: StickyNote, label: 'Sticky note' },
   { tool: 'rect', icon: Square, label: 'Rectangle' },
   { tool: 'ellipse', icon: Circle, label: 'Ellipse' },
@@ -65,18 +70,60 @@ const TOOLS: { tool: Tool; icon: typeof Square; label: string }[] = [
   { tool: 'arrow', icon: MoveUpRight, label: 'Arrow' },
 ]
 
+const LIBRARY: { type: BoardItemType; icon: typeof Square; label: string }[] = [
+  { type: 'note', icon: StickyNote, label: 'Sticky note' },
+  { type: 'rect', icon: Square, label: 'Rectangle' },
+  { type: 'round', icon: SquareRoundCorner, label: 'Rounded' },
+  { type: 'ellipse', icon: Circle, label: 'Ellipse' },
+  { type: 'diamond', icon: Diamond, label: 'Diamond' },
+  { type: 'triangle', icon: Triangle, label: 'Triangle' },
+  { type: 'text', icon: Type, label: 'Text' },
+  { type: 'arrow', icon: MoveUpRight, label: 'Arrow' },
+  { type: 'line', icon: Minus, label: 'Line' },
+]
+
+const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const
+type Handle = (typeof HANDLES)[number]
+const SNAP = 6 // world px
+
+type Interaction =
+  | null
+  | { mode: 'pan'; sx: number; sy: number; opx: number; opy: number }
+  | { mode: 'marquee'; sx: number; sy: number }
+  | { mode: 'move'; sx: number; sy: number; orig: Record<string, BoardItem> }
+  | { mode: 'resize'; id: string; handle: Handle; sx: number; sy: number; orig: BoardItem }
+  | { mode: 'endpoint'; id: string; which: 'start' | 'end' }
+  | { mode: 'draw'; id: string }
+
+const bbox = (i: BoardItem) =>
+  i.type === 'arrow' || i.type === 'line'
+    ? {
+        x: Math.min(i.x, i.x2 ?? i.x),
+        y: Math.min(i.y, i.y2 ?? i.y),
+        w: Math.abs((i.x2 ?? i.x) - i.x),
+        h: Math.abs((i.y2 ?? i.y) - i.y),
+      }
+    : { x: i.x, y: i.y, w: i.w, h: i.h }
+
 export function Canvas({ boardId }: { boardId: string }) {
   const { user, profile } = useAuth()
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const col = collection(db, 'whiteboards', boardId, 'items')
 
   const [items, setItems] = useState<BoardItem[]>([])
   const [cursors, setCursors] = useState<(BoardCursor & { uid: string })[]>([])
   const [tool, setTool] = useState<Tool>('select')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [sel, setSel] = useState<Set<string>>(new Set())
   const [editingId, setEditingId] = useState<string | null>(null)
-  const interaction = useRef<Interaction>(null)
-  const lastCursorWrite = useRef(0)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 40, y: 40 })
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const [dims, setDims] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+  const [library, setLibrary] = useState(false)
+
+  const it = useRef<Interaction>(null)
+  const lastCursor = useRef(0)
   const myColor = colorFor(user?.uid ?? 'x')
 
   useEffect(() => {
@@ -94,430 +141,413 @@ export function Canvas({ boardId }: { boardId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, user])
 
-  const toCanvas = (clientX: number, clientY: number) => {
-    const r = canvasRef.current!.getBoundingClientRect()
-    return { x: clientX - r.left, y: clientY - r.top }
+  const toWorld = (cx: number, cy: number) => {
+    const r = containerRef.current!.getBoundingClientRect()
+    return { x: (cx - r.left - pan.x) / zoom, y: (cy - r.top - pan.y) / zoom }
   }
 
   const patch = (id: string, p: Partial<BoardItem>) => void updateDoc(doc(col, id), p)
-  const del = (id: string) => {
-    void deleteDoc(doc(col, id))
-    setSelectedId(null)
+  const del = (ids: string[]) => {
+    ids.forEach((id) => void deleteDoc(doc(col, id)))
+    setSel(new Set())
   }
 
-  const createAt = async (type: BoardItemType, x: number, y: number) => {
+  const create = async (type: BoardItemType, wx: number, wy: number) => {
     const d = DEFAULTS[type]
-    const w = d.w ?? 140
-    const h = d.h ?? 90
-    const refDoc = await addDoc(col, {
-      type,
-      x: Math.round(x - w / 2),
-      y: Math.round(y - h / 2),
-      w,
-      h,
-      text: '',
-      color: d.color ?? '#c7ddff',
-      authorUid: user?.uid ?? '',
-    })
-    setSelectedId(refDoc.id)
+    if (CONNECTORS.includes(type)) {
+      const refDoc = await addDoc(col, { type, x: wx, y: wy, w: 0, h: 0, x2: wx, y2: wy, text: '', color: '#1c1a19', authorUid: user?.uid ?? '' })
+      it.current = { mode: 'draw', id: refDoc.id }
+      setSel(new Set([refDoc.id]))
+      return
+    }
+    const refDoc = await addDoc(col, { type, x: Math.round(wx - d.w / 2), y: Math.round(wy - d.h / 2), w: d.w, h: d.h, text: '', color: d.color, authorUid: user?.uid ?? '' })
+    setSel(new Set([refDoc.id]))
     setTool('select')
     if (type === 'text' || type === 'note') setEditingId(refDoc.id)
   }
 
-  // ---- pointer handling on the canvas ----
-  const onCanvasPointerDown = (e: React.PointerEvent) => {
-    if (e.target !== canvasRef.current) return // only when hitting empty canvas
-    const { x, y } = toCanvas(e.clientX, e.clientY)
+  // ---------- container pointer handlers ----------
+  const onContainerPointerDown = (e: React.PointerEvent) => {
+    // right button always pans
+    if (e.button === 2) {
+      it.current = { mode: 'pan', sx: e.clientX, sy: e.clientY, opx: pan.x, opy: pan.y }
+      return
+    }
+    if (e.button !== 0) return
+    if (e.target !== containerRef.current && !(e.target as HTMLElement).dataset.world) return
     setEditingId(null)
+    const w = toWorld(e.clientX, e.clientY)
     if (tool === 'select') {
-      setSelectedId(null)
+      setSel(new Set())
+      it.current = { mode: 'marquee', sx: w.x, sy: w.y }
+      setMarquee({ x: w.x, y: w.y, w: 0, h: 0 })
       return
     }
-    if (tool === 'arrow') {
-      addDoc(col, {
-        type: 'arrow',
-        x,
-        y,
-        w: 0,
-        h: 0,
-        x2: x,
-        y2: y,
-        text: '',
-        color: '#1c1a19',
-        authorUid: user?.uid ?? '',
-      }).then((refDoc) => {
-        interaction.current = { mode: 'draw-arrow', id: refDoc.id }
-        setSelectedId(refDoc.id)
-      })
-      return
+    void create(tool, w.x, w.y)
+  }
+
+  const snapMove = (moving: BoardItem[], dx: number, dy: number) => {
+    // candidate lines from other items
+    const others = items.filter((i) => !moving.some((m) => m.id === i.id))
+    const vs: number[] = []
+    const hs: number[] = []
+    for (const o of others) {
+      const b = bbox(o)
+      vs.push(b.x, b.x + b.w, b.x + b.w / 2)
+      hs.push(b.y, b.y + b.h, b.y + b.h / 2)
     }
-    void createAt(tool, x, y)
+    const gv: number[] = []
+    const gh: number[] = []
+    let adjX = dx
+    let adjY = dy
+    for (const m of moving) {
+      const b = bbox(m)
+      const edgesX = [b.x + dx, b.x + b.w + dx, b.x + b.w / 2 + dx]
+      const edgesY = [b.y + dy, b.y + b.h + dy, b.y + b.h / 2 + dy]
+      for (const ex of edgesX)
+        for (const v of vs)
+          if (Math.abs(ex - v) < SNAP / zoom) {
+            adjX += v - ex
+            gv.push(v)
+          }
+      for (const ey of edgesY)
+        for (const hh of hs)
+          if (Math.abs(ey - hh) < SNAP / zoom) {
+            adjY += hh - ey
+            gh.push(hh)
+          }
+    }
+    setGuides({ v: [...new Set(gv)], h: [...new Set(gh)] })
+    return { dx: adjX, dy: adjY }
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
-    const { x, y } = toCanvas(e.clientX, e.clientY)
-    const it = interaction.current
+    const w = toWorld(e.clientX, e.clientY)
+    const cur = it.current
 
-    if (it) {
-      if (it.mode === 'move') {
-        const nx = it.orig.x + (x - it.sx)
-        const ny = it.orig.y + (y - it.sy)
-        setItems((arr) =>
-          arr.map((i) => {
-            if (i.id !== it.id) return i
-            if (i.type === 'arrow')
-              return {
-                ...i,
-                x: nx,
-                y: ny,
-                x2: (it.orig.x2 ?? 0) + (x - it.sx),
-                y2: (it.orig.y2 ?? 0) + (y - it.sy),
-              }
-            return { ...i, x: nx, y: ny }
-          }),
-        )
-      } else if (it.mode === 'resize') {
-        setItems((arr) =>
-          arr.map((i) =>
-            i.id === it.id
-              ? { ...i, w: Math.max(40, it.orig.w + (x - it.sx)), h: Math.max(28, it.orig.h + (y - it.sy)) }
-              : i,
-          ),
-        )
-      } else if (it.mode === 'endpoint') {
-        setItems((arr) =>
-          arr.map((i) =>
-            i.id === it.id ? { ...i, ...(it.which === 'start' ? { x, y } : { x2: x, y2: y }) } : i,
-          ),
-        )
-      } else if (it.mode === 'draw-arrow') {
-        setItems((arr) => arr.map((i) => (i.id === it.id ? { ...i, x2: x, y2: y } : i)))
-      }
+    if (cur?.mode === 'pan') {
+      setPan({ x: cur.opx + (e.clientX - cur.sx), y: cur.opy + (e.clientY - cur.sy) })
+    } else if (cur?.mode === 'marquee') {
+      const r = { x: Math.min(cur.sx, w.x), y: Math.min(cur.sy, w.y), w: Math.abs(w.x - cur.sx), h: Math.abs(w.y - cur.sy) }
+      setMarquee(r)
+      const inside = items.filter((i) => {
+        const b = bbox(i)
+        return b.x < r.x + r.w && b.x + b.w > r.x && b.y < r.y + r.h && b.y + b.h > r.y
+      })
+      setSel(new Set(inside.map((i) => i.id)))
+    } else if (cur?.mode === 'move') {
+      const moving = Object.values(cur.orig)
+      const { dx, dy } = snapMove(moving, w.x - cur.sx, w.y - cur.sy)
+      setItems((arr) =>
+        arr.map((i) => {
+          const o = cur.orig[i.id]
+          if (!o) return i
+          return { ...i, x: o.x + dx, y: o.y + dy, ...(o.x2 != null ? { x2: o.x2 + dx, y2: (o.y2 ?? 0) + dy } : {}) }
+        }),
+      )
+    } else if (cur?.mode === 'resize') {
+      const o = cur.orig
+      let { x, y, w: ww, h: hh } = o
+      const dx = w.x - cur.sx
+      const dy = w.y - cur.sy
+      if (cur.handle.includes('e')) ww = Math.max(24, o.w + dx)
+      if (cur.handle.includes('s')) hh = Math.max(20, o.h + dy)
+      if (cur.handle.includes('w')) { ww = Math.max(24, o.w - dx); x = o.x + (o.w - ww) }
+      if (cur.handle.includes('n')) { hh = Math.max(20, o.h - dy); y = o.y + (o.h - hh) }
+      setItems((arr) => arr.map((i) => (i.id === o.id ? { ...i, x, y, w: ww, h: hh } : i)))
+      setDims({ x: x + ww / 2, y, w: ww, h: hh })
+    } else if (cur?.mode === 'endpoint') {
+      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, ...(cur.which === 'start' ? { x: w.x, y: w.y } : { x2: w.x, y2: w.y }) } : i)))
+    } else if (cur?.mode === 'draw') {
+      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, x2: w.x, y2: w.y } : i)))
     }
 
     const now = Date.now()
-    if (user && now - lastCursorWrite.current > 90) {
-      lastCursorWrite.current = now
+    if (user && now - lastCursor.current > 90) {
+      lastCursor.current = now
       void setDoc(doc(db, 'whiteboards', boardId, 'cursors', user.uid), {
-        x,
-        y,
-        name: profile?.displayName ?? 'Member',
-        color: myColor,
-        updatedAt: serverTimestamp(),
+        x: w.x, y: w.y, name: profile?.displayName ?? 'Member', color: myColor, updatedAt: serverTimestamp(),
       })
     }
   }
 
   const commit = () => {
-    const it = interaction.current
-    interaction.current = null
-    if (!it) return
-    const cur = items.find((i) => i.id === it.id)
+    const cur = it.current
+    it.current = null
+    setMarquee(null)
+    setDims(null)
+    setGuides({ v: [], h: [] })
     if (!cur) return
-    if (it.mode === 'move') patch(it.id, cur.type === 'arrow' ? { x: cur.x, y: cur.y, x2: cur.x2, y2: cur.y2 } : { x: cur.x, y: cur.y })
-    else if (it.mode === 'resize') patch(it.id, { w: cur.w, h: cur.h })
-    else if (it.mode === 'endpoint' || it.mode === 'draw-arrow') patch(it.id, { x: cur.x, y: cur.y, x2: cur.x2, y2: cur.y2 })
+    if (cur.mode === 'move') {
+      for (const id of Object.keys(cur.orig)) {
+        const c = items.find((i) => i.id === id)
+        if (c) patch(id, c.x2 != null ? { x: c.x, y: c.y, x2: c.x2, y2: c.y2 } : { x: c.x, y: c.y })
+      }
+    } else if (cur.mode === 'resize') {
+      const c = items.find((i) => i.id === cur.id)
+      if (c) patch(cur.id, { x: c.x, y: c.y, w: c.w, h: c.h })
+    } else if (cur.mode === 'endpoint' || cur.mode === 'draw') {
+      const c = items.find((i) => i.id === cur.id)
+      if (c) patch(cur.id, { x: c.x, y: c.y, x2: c.x2, y2: c.y2 })
+    }
   }
 
+  const onWheel = (e: React.WheelEvent) => {
+    const r = containerRef.current!.getBoundingClientRect()
+    const px = e.clientX - r.left
+    const py = e.clientY - r.top
+    const nz = Math.min(3, Math.max(0.25, zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)))
+    setPan({ x: px - ((px - pan.x) / zoom) * nz, y: py - ((py - pan.y) / zoom) * nz })
+    setZoom(nz)
+  }
+
+  const zoomBy = (factor: number) => {
+    const r = containerRef.current!.getBoundingClientRect()
+    const px = r.width / 2
+    const py = r.height / 2
+    const nz = Math.min(3, Math.max(0.25, zoom * factor))
+    setPan({ x: px - ((px - pan.x) / zoom) * nz, y: py - ((py - pan.y) / zoom) * nz })
+    setZoom(nz)
+  }
+  const resetView = () => {
+    setZoom(1)
+    setPan({ x: 40, y: 40 })
+  }
+
+  // item interactions
   const startMove = (e: React.PointerEvent, item: BoardItem) => {
-    if (tool !== 'select' || editingId === item.id) return
+    if (e.button !== 0 || tool !== 'select' || editingId === item.id) return
     e.stopPropagation()
-    setSelectedId(item.id)
-    const { x, y } = toCanvas(e.clientX, e.clientY)
-    interaction.current = { mode: 'move', id: item.id, sx: x, sy: y, orig: item }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const nextSel = sel.has(item.id) ? sel : new Set([item.id])
+    setSel(nextSel)
+    const w = toWorld(e.clientX, e.clientY)
+    const orig: Record<string, BoardItem> = {}
+    items.filter((i) => nextSel.has(i.id)).forEach((i) => (orig[i.id] = { ...i }))
+    it.current = { mode: 'move', sx: w.x, sy: w.y, orig }
+  }
+  const startResize = (e: React.PointerEvent, item: BoardItem, handle: Handle) => {
+    if (e.button !== 0) return
+    e.stopPropagation()
+    const w = toWorld(e.clientX, e.clientY)
+    it.current = { mode: 'resize', id: item.id, handle, sx: w.x, sy: w.y, orig: { ...item } }
   }
 
-  const startResize = (e: React.PointerEvent, item: BoardItem) => {
-    e.stopPropagation()
-    const { x, y } = toCanvas(e.clientX, e.clientY)
-    interaction.current = { mode: 'resize', id: item.id, sx: x, sy: y, orig: item }
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  }
-
-  // keyboard delete
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (editingId) return
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size) {
         e.preventDefault()
-        del(selectedId)
+        del([...sel])
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, editingId])
+  }, [sel, editingId])
 
-  const selected = items.find((i) => i.id === selectedId) || null
-  const paletteForSelected = selected
-    ? selected.type === 'text' || selected.type === 'arrow'
+  const selArr = items.filter((i) => sel.has(i.id))
+  const paletteFor =
+    selArr.length && selArr.every((i) => i.type === 'text' || CONNECTORS.includes(i.type))
       ? STROKE_COLORS
       : NOTE_COLORS
-    : []
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-auto">
+    <div className="relative min-h-0 flex-1 overflow-hidden">
       {/* Toolbar */}
-      <div className="pointer-events-auto absolute left-3 top-3 z-20 flex items-center gap-1 rounded-xl border border-border bg-surface/95 p-1 shadow-md backdrop-blur">
-        {TOOLS.map(({ tool: t, icon: Icon, label }) => (
-          <button
-            key={t}
-            onClick={() => setTool(t)}
-            title={label}
-            className={`grid h-9 w-9 place-items-center rounded-lg transition ${
-              tool === t ? 'bg-brand text-white' : 'text-muted hover:bg-surface-2 hover:text-ink'
-            }`}
-          >
+      <div className="absolute left-3 top-3 z-20 flex items-center gap-1 rounded-xl border border-border bg-surface/95 p-1 shadow-md backdrop-blur">
+        {TOOLBAR.map(({ tool: t, icon: Icon, label }) => (
+          <button key={t} onClick={() => setTool(t)} title={label}
+            className={`grid h-9 w-9 place-items-center rounded-lg transition ${tool === t ? 'bg-brand text-white' : 'text-muted hover:bg-surface-2 hover:text-ink'}`}>
             <Icon size={17} />
           </button>
         ))}
-        {selected && (
+        <button onClick={() => setLibrary(true)} title="Shape library"
+          className="grid h-9 w-9 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink">
+          <Shapes size={17} />
+        </button>
+        {selArr.length > 0 && (
           <>
             <span className="mx-1 h-6 w-px bg-border" />
-            {paletteForSelected.map((c) => (
-              <button
-                key={c}
-                onClick={() => patch(selected.id, { color: c })}
-                className="h-5 w-5 rounded-full border border-black/10 transition hover:scale-110"
-                style={{ background: c }}
-                title="Colour"
-              />
+            {paletteFor.map((c) => (
+              <button key={c} onClick={() => selArr.forEach((s) => patch(s.id, { color: c }))}
+                className="h-5 w-5 rounded-full border border-black/10 transition hover:scale-110" style={{ background: c }} />
             ))}
-            <button
-              onClick={() => del(selected.id)}
-              title="Delete"
-              className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand"
-            >
+            <button onClick={() => del([...sel])} title="Delete"
+              className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand">
               <Trash2 size={16} />
             </button>
           </>
         )}
       </div>
 
+      {/* Zoom controls */}
+      <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 rounded-xl border border-border bg-surface/95 p-1 shadow-md backdrop-blur">
+        <button onClick={() => zoomBy(1 / 1.2)} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" title="Zoom out"><ZoomOut size={16} /></button>
+        <input type="range" min={25} max={300} value={Math.round(zoom * 100)}
+          onChange={(e) => zoomBy(Number(e.target.value) / 100 / zoom)}
+          className="h-1 w-24 accent-brand" />
+        <span className="w-10 text-center text-xs tabular-nums text-muted">{Math.round(zoom * 100)}%</span>
+        <button onClick={() => zoomBy(1.2)} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" title="Zoom in"><ZoomIn size={16} /></button>
+        <button onClick={resetView} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-surface-2 hover:text-ink" title="Reset view"><Maximize size={15} /></button>
+      </div>
+
+      {/* Canvas surface */}
       <div
-        ref={canvasRef}
-        onPointerDown={onCanvasPointerDown}
+        ref={containerRef}
+        onPointerDown={onContainerPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={commit}
         onPointerLeave={commit}
-        className="wb-grid relative h-[2000px] w-[3000px]"
-        style={{ cursor: tool === 'select' ? 'default' : 'crosshair' }}
+        onWheel={onWheel}
+        onContextMenu={(e) => e.preventDefault()}
+        className="wb-grid absolute inset-0 select-none"
+        style={{ cursor: tool === 'select' ? 'default' : 'crosshair', backgroundPosition: `${pan.x}px ${pan.y}px`, backgroundSize: `${26 * zoom}px ${26 * zoom}px` }}
       >
-        {/* arrows layer */}
-        <svg className="pointer-events-none absolute inset-0 h-full w-full">
-          <defs>
-            {STROKE_COLORS.map((c) => (
-              <marker
-                key={c}
-                id={`arrow-${c.replace('#', '')}`}
-                markerWidth="10"
-                markerHeight="10"
-                refX="7"
-                refY="3"
-                orient="auto"
-                markerUnits="strokeWidth"
-              >
-                <path d="M0,0 L7,3 L0,6 Z" fill={c} />
-              </marker>
-            ))}
-          </defs>
-          {items
-            .filter((i) => i.type === 'arrow')
-            .map((a) => (
+        <div data-world className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
+          {/* connectors */}
+          <svg className="pointer-events-none absolute overflow-visible" width={1} height={1}>
+            <defs>
+              {STROKE_COLORS.map((c) => (
+                <marker key={c} id={`ar-${c.replace('#', '')}`} markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+                  <path d="M0,0 L7,3 L0,6 Z" fill={c} />
+                </marker>
+              ))}
+            </defs>
+            {items.filter((i) => CONNECTORS.includes(i.type)).map((a) => (
               <g key={a.id}>
-                <line
-                  x1={a.x}
-                  y1={a.y}
-                  x2={a.x2}
-                  y2={a.y2}
-                  stroke="transparent"
-                  strokeWidth={14}
-                  className="pointer-events-auto cursor-move"
-                  onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)}
-                />
-                <line
-                  x1={a.x}
-                  y1={a.y}
-                  x2={a.x2}
-                  y2={a.y2}
-                  stroke={a.color}
-                  strokeWidth={2.5}
-                  markerEnd={`url(#arrow-${a.color.replace('#', '')})`}
-                />
-                {selectedId === a.id && (
+                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-move" onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)} />
+                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={2.5} markerEnd={a.type === 'arrow' ? `url(#ar-${a.color.replace('#', '')})` : undefined} />
+                {sel.has(a.id) && (
                   <>
-                    <circle
-                      cx={a.x}
-                      cy={a.y}
-                      r={6}
-                      fill="#fff"
-                      stroke="var(--brand)"
-                      strokeWidth={2}
-                      className="pointer-events-auto cursor-crosshair"
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        interaction.current = { mode: 'endpoint', id: a.id, which: 'start' }
-                      }}
-                    />
-                    <circle
-                      cx={a.x2}
-                      cy={a.y2}
-                      r={6}
-                      fill="#fff"
-                      stroke="var(--brand)"
-                      strokeWidth={2}
-                      className="pointer-events-auto cursor-crosshair"
-                      onPointerDown={(e) => {
-                        e.stopPropagation()
-                        interaction.current = { mode: 'endpoint', id: a.id, which: 'end' }
-                      }}
-                    />
+                    <circle cx={a.x} cy={a.y} r={6} fill="#fff" stroke="var(--brand)" strokeWidth={2} className="pointer-events-auto cursor-crosshair" onPointerDown={(e) => { e.stopPropagation(); it.current = { mode: 'endpoint', id: a.id, which: 'start' } }} />
+                    <circle cx={a.x2} cy={a.y2} r={6} fill="#fff" stroke="var(--brand)" strokeWidth={2} className="pointer-events-auto cursor-crosshair" onPointerDown={(e) => { e.stopPropagation(); it.current = { mode: 'endpoint', id: a.id, which: 'end' } }} />
                   </>
                 )}
               </g>
             ))}
-        </svg>
+            {/* snap guides */}
+            {guides.v.map((v, i) => <line key={'v' + i} x1={v} y1={-4000} x2={v} y2={4000} stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />)}
+            {guides.h.map((h, i) => <line key={'h' + i} x1={-4000} y1={h} x2={4000} y2={h} stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />)}
+          </svg>
 
-        {/* items */}
-        {items
-          .filter((i) => i.type !== 'arrow')
-          .map((it) => (
-            <ItemView
-              key={it.id}
-              item={it}
-              selected={selectedId === it.id}
-              editing={editingId === it.id}
-              onPointerDown={(e) => startMove(e, it)}
-              onDoubleClick={() => {
-                setSelectedId(it.id)
-                setEditingId(it.id)
-              }}
-              onEdit={(text) => patch(it.id, { text })}
+          {items.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
+            <ItemView key={item.id} item={item} selected={sel.has(item.id)} editing={editingId === item.id} zoom={zoom}
+              onPointerDown={(e) => startMove(e, item)}
+              onDoubleClick={() => { setSel(new Set([item.id])); setEditingId(item.id) }}
+              onEdit={(text) => patch(item.id, { text })}
               onEditDone={() => setEditingId(null)}
-              onResize={(e) => startResize(e, it)}
-            />
+              onResize={(e, h) => startResize(e, item, h)} />
           ))}
 
-        {/* live cursors */}
-        {cursors
-          .filter((c) => c.uid !== user?.uid && isOnline(c.updatedAt as never))
-          .map((c) => (
-            <div
-              key={c.uid}
-              className="pointer-events-none absolute z-50 transition-transform duration-75"
-              style={{ left: c.x, top: c.y }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill={c.color}>
-                <path d="M4 2 L20 12 L13 13 L9 21 Z" />
-              </svg>
-              <span
-                className="ml-3 rounded px-1.5 py-0.5 text-[0.65rem] font-semibold text-white"
-                style={{ background: c.color }}
-              >
-                {c.name}
-              </span>
+          {/* dimension badge */}
+          {dims && (
+            <div className="pointer-events-none absolute rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ left: dims.x, top: dims.y - 22 / zoom, transform: `translateX(-50%) scale(${1 / zoom})`, transformOrigin: 'center' }}>
+              {Math.round(dims.w)} × {Math.round(dims.h)}
+            </div>
+          )}
+
+          {/* marquee */}
+          {marquee && (
+            <div className="pointer-events-none absolute border border-brand bg-brand/10" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
+          )}
+
+          {/* cursors */}
+          {cursors.filter((c) => c.uid !== user?.uid && isOnline(c.updatedAt as never)).map((c) => (
+            <div key={c.uid} className="pointer-events-none absolute z-50" style={{ left: c.x, top: c.y, transform: `scale(${1 / zoom})`, transformOrigin: 'top left' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={c.color}><path d="M4 2 L20 12 L13 13 L9 21 Z" /></svg>
+              <span className="ml-3 rounded px-1.5 py-0.5 text-[0.65rem] font-semibold text-white" style={{ background: c.color }}>{c.name}</span>
             </div>
           ))}
+        </div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-surface/90 px-3 py-1.5 text-xs text-muted shadow-sm">
-        Pick a tool, then click the canvas · double-click to edit text · Del to remove
+      {library && <ShapeLibrary onPick={(t) => { setTool(t); setLibrary(false) }} onClose={() => setLibrary(false)} />}
+    </div>
+  )
+}
+
+function ShapeLibrary({ onPick, onClose }: { onPick: (t: BoardItemType) => void; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold text-ink">Shapes &amp; elements</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={20} /></button>
+        </div>
+        <p className="mt-1 text-xs text-muted">Pick an element, then click the canvas to place it.</p>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          {LIBRARY.map(({ type, icon: Icon, label }) => (
+            <button key={type} onClick={() => onPick(type)}
+              className="flex flex-col items-center gap-2 rounded-xl border border-border p-3 text-muted transition hover:border-brand/40 hover:text-brand">
+              <Icon size={26} />
+              <span className="text-xs font-medium">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )
 }
 
 function ItemView({
-  item,
-  selected,
-  editing,
-  onPointerDown,
-  onDoubleClick,
-  onEdit,
-  onEditDone,
-  onResize,
+  item, selected, editing, zoom, onPointerDown, onDoubleClick, onEdit, onEditDone, onResize,
 }: {
   item: BoardItem
   selected: boolean
   editing: boolean
+  zoom: number
   onPointerDown: (e: React.PointerEvent) => void
   onDoubleClick: () => void
   onEdit: (text: string) => void
   onEditDone: () => void
-  onResize: (e: React.PointerEvent) => void
+  onResize: (e: React.PointerEvent, h: Handle) => void
 }) {
   const isText = item.type === 'text'
-  const base = 'absolute flex items-center justify-center overflow-hidden'
-  const shapeStyle: React.CSSProperties = {
-    left: item.x,
-    top: item.y,
-    width: item.w,
-    height: item.h,
-  }
-
-  let boxClass = ''
+  const style: React.CSSProperties = { left: item.x, top: item.y, width: item.w, height: item.h }
   const inner: React.CSSProperties = {}
-  if (item.type === 'note') {
-    boxClass = 'rounded-lg shadow-md'
-    inner.background = item.color
-  } else if (item.type === 'rect') {
-    boxClass = 'rounded-md border'
-    inner.background = item.color
-    inner.borderColor = 'rgba(0,0,0,0.15)'
-  } else if (item.type === 'ellipse') {
-    boxClass = 'rounded-full border'
-    inner.background = item.color
-    inner.borderColor = 'rgba(0,0,0,0.15)'
-  } else if (item.type === 'diamond') {
-    // background drawn by the clip-path span below
-  } else if (isText) {
-    boxClass = 'rounded'
+  let cls = 'overflow-hidden'
+  if (item.type === 'note') { cls = 'rounded-lg shadow-md'; inner.background = item.color }
+  else if (item.type === 'rect') { cls = 'border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
+  else if (item.type === 'round') { cls = 'rounded-2xl border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
+  else if (item.type === 'ellipse') { cls = 'rounded-full border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
+  else if (isText) cls = 'rounded'
+
+  const clip =
+    item.type === 'diamond' ? 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)' :
+    item.type === 'triangle' ? 'polygon(50% 0, 100% 100%, 0 100%)' : undefined
+
+  const handleCursor: Record<Handle, string> = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' }
+  const hpos: Record<Handle, React.CSSProperties> = {
+    nw: { left: -4, top: -4 }, n: { left: '50%', top: -4, marginLeft: -4 }, ne: { right: -4, top: -4 },
+    e: { right: -4, top: '50%', marginTop: -4 }, se: { right: -4, bottom: -4 }, s: { left: '50%', bottom: -4, marginLeft: -4 },
+    sw: { left: -4, bottom: -4 }, w: { left: -4, top: '50%', marginTop: -4 },
   }
 
   return (
-    <div
-      className={`${base} ${boxClass} ${selected ? 'ring-2 ring-brand' : ''}`}
-      style={{ ...shapeStyle, ...inner, cursor: editing ? 'text' : 'move' }}
-      onPointerDown={onPointerDown}
-      onDoubleClick={onDoubleClick}
-    >
-      {item.type === 'diamond' && (
-        <span
-          className="pointer-events-none absolute inset-0"
-          style={{ background: item.color, clipPath: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)', border: '1px solid rgba(0,0,0,0.15)' }}
-        />
-      )}
+    <div className={`absolute flex items-center justify-center ${cls} ${selected ? 'ring-2 ring-brand' : ''}`}
+      style={{ ...style, ...inner, cursor: editing ? 'text' : 'move' }}
+      onPointerDown={onPointerDown} onDoubleClick={onDoubleClick}>
+      {clip && <span className="pointer-events-none absolute inset-0" style={{ background: item.color, clipPath: clip, border: '1px solid rgba(0,0,0,.15)' }} />}
 
       {editing ? (
-        <textarea
-          autoFocus
-          defaultValue={item.text}
-          onBlur={(e) => {
-            onEdit(e.target.value)
-            onEditDone()
-          }}
+        <textarea autoFocus defaultValue={item.text}
+          onBlur={(e) => { onEdit(e.target.value); onEditDone() }}
           onPointerDown={(e) => e.stopPropagation()}
-          className="relative z-10 h-full w-full resize-none bg-transparent px-2 py-1 text-center text-sm outline-none"
-          style={{ color: isText ? item.color : 'rgba(0,0,0,0.8)' }}
-        />
+          className="relative z-10 h-full w-full resize-none select-text bg-transparent px-2 py-1 text-center text-sm outline-none"
+          style={{ color: isText ? item.color : 'rgba(0,0,0,.8)' }} />
       ) : (
-        <span
-          className={`relative z-10 whitespace-pre-wrap px-2 text-sm ${isText ? 'font-medium' : ''} ${
-            !item.text ? 'opacity-40' : ''
-          }`}
-          style={{ color: isText ? item.color : 'rgba(0,0,0,0.8)' }}
-        >
+        <span className={`relative z-10 whitespace-pre-wrap px-2 text-sm ${isText ? 'font-medium' : ''} ${!item.text ? 'opacity-40' : ''}`}
+          style={{ color: isText ? item.color : 'rgba(0,0,0,.8)' }}>
           {item.text || (isText ? 'Text' : '')}
         </span>
       )}
 
-      {selected && !editing && (
-        <span
-          onPointerDown={onResize}
-          className="absolute -bottom-1 -right-1 z-20 h-3 w-3 cursor-se-resize rounded-full border border-white bg-brand"
-        />
-      )}
+      {selected && !editing && HANDLES.map((h) => (
+        <span key={h} onPointerDown={(e) => onResize(e, h)}
+          className="absolute z-20 rounded-sm border border-white bg-brand"
+          style={{ ...hpos[h], width: 8 / zoom, height: 8 / zoom, cursor: handleCursor[h] }} />
+      ))}
     </div>
   )
 }

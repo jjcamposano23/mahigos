@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, CalendarDays, CheckSquare } from 'lucide-react'
+import { Plus, CalendarDays, CheckSquare, Paperclip } from 'lucide-react'
 import { Avatar } from '../../components/Avatar'
 import {
   LABEL_MAP,
@@ -221,6 +221,12 @@ function TaskCard({
             <span className="flex items-center gap-1 text-[0.7rem] text-muted">
               <CheckSquare size={12} />
               {subDone}/{subTotal}
+            </span>
+          )}
+          {(task.attachments?.length ?? 0) > 0 && (
+            <span className="flex items-center gap-1 text-[0.7rem] text-muted">
+              <Paperclip size={11} />
+              {task.attachments!.length}
             </span>
           )}
         </div>

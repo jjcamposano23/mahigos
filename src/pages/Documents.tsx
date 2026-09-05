@@ -6,6 +6,7 @@ import {
   doc,
   onSnapshot,
   serverTimestamp,
+  updateDoc,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import {
@@ -19,6 +20,8 @@ import {
   X,
   Search,
   Loader2,
+  Pencil,
+  FolderOpen,
 } from 'lucide-react'
 import { db, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
@@ -29,6 +32,9 @@ import {
   PROVIDER_META,
   previewUrl,
 } from '../features/docs/provider'
+
+const SHARED_DRIVE =
+  'https://drive.google.com/drive/folders/1t7Tq6M0yrkMRsEW8tC-XAD8Y2eLv209h?usp=drive_link'
 
 function fmtSize(n?: number) {
   if (!n) return ''
@@ -54,6 +60,7 @@ export function Documents() {
   const [showLink, setShowLink] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<DocResource | null>(null)
+  const [editing, setEditing] = useState<DocResource | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -141,14 +148,28 @@ export function Documents() {
     await deleteDoc(doc(db, 'documents', r.id))
   }
 
+  const saveEdit = async (id: string, patch: { title: string; projectId: string | null }) => {
+    await updateDoc(doc(db, 'documents', id), patch)
+    setEditing(null)
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-6">
       <div className="flex flex-wrap items-center gap-3">
         <div>
-          <h1 className="font-display text-2xl font-bold text-ink">Documents</h1>
-          <p className="text-sm text-muted">Google Docs, files, and links for the association.</p>
+          <h1 className="font-display text-2xl font-bold text-ink">Files</h1>
+          <p className="text-sm text-muted">Central repository of files and links for UP Ibalon.</p>
         </div>
         <div className="flex-1" />
+        <a
+          href={SHARED_DRIVE}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-2 text-sm font-medium text-ink transition hover:border-brand/40"
+          title="Open the shared Google Drive folder"
+        >
+          <FolderOpen size={15} /> Shared Drive
+        </a>
         <div className="relative">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -221,12 +242,14 @@ export function Documents() {
                       {r.fileSize ? ` · ${fmtSize(r.fileSize)}` : ''}
                     </div>
                   </div>
-                  <button
-                    onClick={() => remove(r)}
-                    className="text-muted opacity-0 transition hover:text-brand group-hover:opacity-100"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                    <button onClick={() => setEditing(r)} title="Edit details" className="text-muted hover:text-ink">
+                      <Pencil size={13} />
+                    </button>
+                    <button onClick={() => remove(r)} title="Remove" className="text-muted hover:text-brand">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {project && (
@@ -270,7 +293,85 @@ export function Documents() {
       {showLink && (
         <LinkModal projects={projects} onClose={() => setShowLink(false)} onAdd={addLink} />
       )}
+      {editing && (
+        <EditModal
+          resource={editing}
+          projects={projects}
+          onClose={() => setEditing(null)}
+          onSave={saveEdit}
+        />
+      )}
       {preview && <PreviewModal resource={preview} onClose={() => setPreview(null)} />}
+    </div>
+  )
+}
+
+function EditModal({
+  resource,
+  projects,
+  onClose,
+  onSave,
+}: {
+  resource: DocResource
+  projects: Project[]
+  onClose: () => void
+  onSave: (id: string, patch: { title: string; projectId: string | null }) => Promise<void>
+}) {
+  const [title, setTitle] = useState(resource.title)
+  const [projectId, setProjectId] = useState(resource.projectId ?? '')
+  const [busy, setBusy] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h2 className="font-display text-lg font-bold text-ink">Edit details</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Name</span>
+            <input
+              autoFocus
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-muted">Project</span>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-sm text-ink outline-none focus:border-brand"
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {resource.kind === 'file' && resource.fileName && (
+            <p className="text-xs text-muted">File: {resource.fileName}</p>
+          )}
+          <button
+            onClick={async () => {
+              if (!title.trim()) return
+              setBusy(true)
+              await onSave(resource.id, { title: title.trim(), projectId: projectId || null })
+            }}
+            disabled={busy || !title.trim()}
+            className="w-full rounded-lg bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+          >
+            Save changes
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

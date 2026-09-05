@@ -8,6 +8,8 @@ import type { CalendarEvent, Task } from '../lib/types'
 import { EVENT_META } from '../lib/types'
 import { bikolGreeting } from '../lib/bikol'
 import { toISO } from '../lib/dates'
+import { PhotoCarousel } from '../components/PhotoCarousel'
+import { BICOL_PHOTO_SRCS } from '../lib/photos'
 
 export function Dashboard() {
   const { profile } = useAuth()
@@ -54,11 +56,7 @@ export function Dashboard() {
     <div className="mx-auto max-w-5xl px-6 py-8">
       {/* Hero — real Mayon photo with brand-red colour filter */}
       <div className="relative overflow-hidden rounded-2xl">
-        <img
-          src="/photos/mayon.jpg"
-          alt="Mayon Volcano"
-          className="absolute inset-0 h-full w-full scale-105 object-cover"
-        />
+        <PhotoCarousel images={BICOL_PHOTO_SRCS} interval={7000} />
         <div className="absolute inset-0 bg-gradient-to-r from-brand/90 via-brand/75 to-black/70 mix-blend-multiply" />
         <div className="absolute inset-0 bg-black/20" />
         <div className="banig absolute inset-0 opacity-10" />
@@ -70,8 +68,8 @@ export function Dashboard() {
             {firstName} 🌋
           </h1>
           <p className="mt-2 max-w-lg text-white/90 [animation-delay:120ms] animate-rise">
-            Welcome to <span className="font-bold">Mahigos</span>, the collaboration workspace of the
-            UP Ibalon Alumni Association.
+            Welcome to <span className="font-bold">Mahigos</span>, the collaboration workspace for UP
+            Ibalon.
           </p>
         </div>
       </div>

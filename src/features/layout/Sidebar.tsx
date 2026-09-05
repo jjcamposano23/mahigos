@@ -5,7 +5,7 @@ import {
   CalendarDays,
   Users,
   MessagesSquare,
-  FileText,
+  FolderOpen,
   PenTool,
   Video,
   Settings,
@@ -28,7 +28,7 @@ const items: Item[] = [
   { to: '/calendar', label: 'Calendar', icon: CalendarDays },
   { to: '/team', label: 'Team', icon: Users },
   { to: '/messages', label: 'Messages', icon: MessagesSquare },
-  { to: '/docs', label: 'Documents', icon: FileText },
+  { to: '/files', label: 'Files', icon: FolderOpen },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool },
   { to: '/calls', label: 'Calls', icon: Video, soon: true },
 ]

@@ -1,5 +1,8 @@
-import { useState } from 'react'
-import { X, Trash2, Plus } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2 } from 'lucide-react'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { storage } from '../../lib/firebase'
+import { useAuth } from '../../context/AuthContext'
 import {
   LABELS,
   PRIORITY_META,
@@ -7,6 +10,7 @@ import {
   type Project,
   type Subtask,
   type Task,
+  type TaskAttachment,
   type TaskPriority,
   type TaskStatus,
   type UserProfile,
@@ -31,12 +35,65 @@ export function TaskModal({
   onPatch: (id: string, patch: Partial<Task>) => void
   onDelete: (id: string) => void
 }) {
+  const { user, profile } = useAuth()
   const [title, setTitle] = useState(task.title)
   const [desc, setDesc] = useState(task.description ?? '')
   const [newSub, setNewSub] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [addingLink, setAddingLink] = useState(false)
+  const [linkUrl, setLinkUrl] = useState('')
+  const [linkName, setLinkName] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
 
   const labels = task.labels ?? []
   const subtasks = task.subtasks ?? []
+  const attachments = task.attachments ?? []
+
+  const addAttachment = (a: TaskAttachment) =>
+    onPatch(task.id, { attachments: [...attachments, a] })
+  const removeAttachment = (id: string) =>
+    onPatch(task.id, { attachments: attachments.filter((a) => a.id !== id) })
+
+  const onUploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+    if (file.size > 25 * 1024 * 1024) return alert('Please choose a file under 25 MB.')
+    setUploading(true)
+    try {
+      const safe = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const r = storageRef(storage, `library/${user.uid}/${Date.now()}-${safe}`)
+      await uploadBytes(r, file)
+      const url = await getDownloadURL(r)
+      addAttachment({
+        id: uid(),
+        name: file.name,
+        url,
+        kind: 'file',
+        fileType: file.type,
+        size: file.size,
+        addedByName: profile?.displayName ?? '',
+      })
+    } catch {
+      alert('Upload failed.')
+    } finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const submitLink = () => {
+    if (!linkUrl.trim()) return
+    addAttachment({
+      id: uid(),
+      name: linkName.trim() || linkUrl.trim(),
+      url: linkUrl.trim(),
+      kind: 'link',
+      addedByName: profile?.displayName ?? '',
+    })
+    setLinkUrl('')
+    setLinkName('')
+    setAddingLink(false)
+  }
 
   const toggleLabel = (id: string) => {
     const next = labels.includes(id) ? labels.filter((l) => l !== id) : [...labels, id]
@@ -253,6 +310,79 @@ export function TaskModal({
               <Plus size={15} />
             </button>
           </div>
+        </div>
+
+        {/* Attachments / submission bin */}
+        <div className="mt-4">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-muted">
+              <Paperclip size={13} /> Attachments &amp; submissions
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted transition hover:border-brand/40 hover:text-brand disabled:opacity-60"
+              >
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                Upload
+              </button>
+              <button
+                onClick={() => setAddingLink((v) => !v)}
+                className="flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted transition hover:border-brand/40 hover:text-brand"
+              >
+                <Link2 size={12} /> Link
+              </button>
+              <input ref={fileRef} type="file" onChange={onUploadFile} className="hidden" />
+            </div>
+          </div>
+
+          {addingLink && (
+            <div className="mb-2 space-y-1.5 rounded-lg border border-border p-2">
+              <input
+                autoFocus
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                placeholder="https://…  (Google Doc, Drive, etc.)"
+                className="w-full rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
+              />
+              <div className="flex gap-1.5">
+                <input
+                  value={linkName}
+                  onChange={(e) => setLinkName(e.target.value)}
+                  placeholder="Label (optional)"
+                  className="flex-1 rounded-md border border-border bg-surface px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
+                />
+                <button onClick={submitLink} className="rounded-md bg-brand px-2.5 py-1 text-xs font-semibold text-white">
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+
+          {attachments.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border py-3 text-center text-xs text-muted">
+              Drop files or links here for this task.
+            </p>
+          ) : (
+            <ul className="space-y-1">
+              {attachments.map((a) => (
+                <li key={a.id} className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5">
+                  {a.kind === 'link' ? (
+                    <Link2 size={14} className="shrink-0 text-brand" />
+                  ) : (
+                    <FileText size={14} className="shrink-0 text-brand" />
+                  )}
+                  <a href={a.url} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-sm text-ink hover:text-brand hover:underline">
+                    {a.name}
+                  </a>
+                  <button onClick={() => removeAttachment(a.id)} className="text-muted transition hover:text-brand">
+                    <X size={13} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="mt-5 flex justify-between border-t border-border pt-4">

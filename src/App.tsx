@@ -35,7 +35,8 @@ export default function App() {
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/team" element={<Team />} />
           <Route path="/messages" element={<Messages />} />
-          <Route path="/docs" element={<Documents />} />
+          <Route path="/files" element={<Documents />} />
+          <Route path="/docs" element={<Navigate to="/files" replace />} />
           <Route path="/whiteboard" element={<Whiteboard />} />
           <Route
             path="/calls"

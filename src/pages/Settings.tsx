@@ -198,7 +198,8 @@ export function Settings() {
       <section className="mt-4 rounded-xl border border-border bg-surface p-5">
         <h2 className="font-display text-lg font-semibold text-ink">About</h2>
         <p className="mt-2 text-sm text-muted">
-          Mahigos is the collaboration workspace of the UP Ibalon Alumni Association, Inc.
+          Mahigos is the collaboration workspace for UP Ibalon, powered by the UP Ibalon Alumni
+          Association, Inc.
         </p>
         <p className="mt-2 text-xs text-muted">
           Bicol photos via Wikimedia Commons — Mayon by ShmilyDigital (CC BY-SA 4.0), Butanding by

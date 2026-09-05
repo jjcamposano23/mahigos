@@ -9,7 +9,11 @@ export const BICOL_PHOTOS: BicolPhoto[] = [
   { src: '/photos/mayon.jpg', label: 'Mayon Volcano', place: 'Albay' },
   { src: '/photos/butanding.jpg', label: 'Butanding (whale shark)', place: 'Donsol, Sorsogon' },
   { src: '/photos/penafrancia.jpg', label: 'Peñafrancia Basilica', place: 'Naga City' },
+  { src: '/photos/bicol-map.png', label: 'Bicol Region', place: 'Region V' },
 ]
+
+/** Just the image srcs, for carousels. */
+export const BICOL_PHOTO_SRCS = BICOL_PHOTOS.map((p) => p.src)
 
 /** Pick a photo. With a seed it is stable (e.g. same all day); otherwise random. */
 export function pickBicolPhoto(seed?: number): BicolPhoto {

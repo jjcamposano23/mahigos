@@ -141,6 +141,32 @@ export function Messages() {
     }
   }
 
+  const editMessage = async (id: string, text: string) => {
+    if (!selectedId || !text) return
+    await updateDoc(doc(db, 'channels', selectedId, 'messages', id), { text, edited: true })
+  }
+
+  const deleteMessage = async (m: Message) => {
+    if (!selectedId) return
+    await deleteDoc(doc(db, 'channels', selectedId, 'messages', m.id))
+    if (m.parentId) {
+      await updateDoc(doc(db, 'channels', selectedId, 'messages', m.parentId), {
+        replyCount: increment(-1),
+      })
+    }
+    if (threadId === m.id) setThreadId(null)
+  }
+
+  const renameChannel = async (id: string, name: string) => {
+    const clean = name.trim().replace(/^#/, '')
+    if (clean) await updateDoc(doc(db, 'channels', id), { name: clean })
+  }
+
+  const deleteChannel = async (id: string) => {
+    await deleteDoc(doc(db, 'channels', id))
+    if (selectedId === id) setSelectedId(null)
+  }
+
   const uploadClip = async (blob: Blob): Promise<string> => {
     const r = storageRef(storage, `clips/${user!.uid}/${Date.now()}.webm`)
     await uploadBytes(r, blob)
@@ -190,6 +216,8 @@ export function Messages() {
         onSelect={setSelectedId}
         onCreateChannel={createChannel}
         onStartDm={startDm}
+        onRenameChannel={renameChannel}
+        onDeleteChannel={deleteChannel}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -229,7 +257,10 @@ export function Messages() {
                 <MessageList
                   messages={topLevel}
                   memberMap={memberMap}
+                  currentUid={user?.uid}
                   onOpenThread={(m) => setThreadId(m.id)}
+                  onEdit={editMessage}
+                  onDelete={deleteMessage}
                 />
                 <Composer
                   placeholder={
@@ -250,6 +281,9 @@ export function Messages() {
                   root={threadRoot}
                   replies={threadReplies}
                   memberMap={memberMap}
+                  currentUid={user?.uid}
+                  onEdit={editMessage}
+                  onDelete={deleteMessage}
                   onClose={() => setThreadId(null)}
                   onSendText={(text) => postMessage({ text }, threadRoot.id)}
                   onSendClip={async (blob) => {

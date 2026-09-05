@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -10,7 +10,8 @@ import { auth } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import { Seal } from '../components/Logo'
 import { ThemeToggle } from '../components/ThemeToggle'
-import { pickBicolPhoto } from '../lib/photos'
+import { PhotoCarousel } from '../components/PhotoCarousel'
+import { BICOL_PHOTO_SRCS } from '../lib/photos'
 
 function friendlyError(code: string): string {
   switch (code) {
@@ -38,7 +39,6 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const photo = useMemo(() => pickBicolPhoto(), [])
 
   // Surface allowlist rejections coming from the auth context.
   useEffect(() => {
@@ -97,11 +97,7 @@ export function Login() {
     <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
       {/* Brand panel — real Mayon photo with a brand-red colour filter */}
       <div className="relative hidden overflow-hidden lg:block">
-        <img
-          src={photo.src}
-          alt={`${photo.label}, ${photo.place}`}
-          className="absolute inset-0 h-full w-full scale-105 object-cover"
-        />
+        <PhotoCarousel images={BICOL_PHOTO_SRCS} />
         <div className="absolute inset-0 bg-gradient-to-b from-brand/85 via-brand/70 to-black/85 mix-blend-multiply" />
         <div className="absolute inset-0 bg-black/25" />
         <div className="banig absolute inset-0 opacity-10" />
@@ -120,7 +116,7 @@ export function Login() {
               Plan projects, track tasks, and collaborate.
             </p>
             <p className="mt-3 max-w-sm text-sm text-white/75 [animation-delay:260ms] animate-rise">
-              A workspace collaboration tool for the UP Ibalon Alumni Association.
+              A workspace collaboration tool for UP Ibalon.
             </p>
           </div>
         </div>
@@ -229,7 +225,7 @@ export function Login() {
           </form>
 
           <p className="mt-8 text-center text-xs text-muted">
-            UP Ibalon Alumni Association, Inc.
+            Powered by UP Ibalon Alumni Association, Inc.
           </p>
         </div>
       </div>

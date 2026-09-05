@@ -74,6 +74,12 @@ export function AppShell() {
         <main className="min-h-0 flex-1 overflow-auto bg-bg">
           <Outlet />
         </main>
+
+        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border bg-surface px-4 py-1 text-[0.65rem] text-muted">
+          <span>Copyright &copy; 2026 UP Ibalon Alumni Association</span>
+          <span className="text-border">|</span>
+          <span>All Rights Reserved</span>
+        </footer>
       </div>
 
       {profileOpen && <ProfileDialog onClose={() => setProfileOpen(false)} />}
@@ -111,7 +117,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
           <h2 className="font-display text-lg font-bold text-ink">{name}</h2>
-          <p className="text-xs text-muted">UP Ibalon Alumni Association</p>
+          <p className="text-xs text-muted">UP Ibalon</p>
 
           <dl className="mt-4 space-y-2.5">
             {rows.map(({ icon: Icon, label, value, cap }) => (

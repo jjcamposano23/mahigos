@@ -51,6 +51,7 @@ export interface Message {
   replyCount?: number
   clipUrl?: string | null
   clipType?: 'audio' | 'video' | null
+  edited?: boolean
   createdAt?: Timestamp
 }
 
@@ -88,7 +89,16 @@ export interface Whiteboard {
   createdAt?: Timestamp
 }
 
-export type BoardItemType = 'note' | 'rect' | 'ellipse' | 'diamond' | 'text' | 'arrow'
+export type BoardItemType =
+  | 'note'
+  | 'rect'
+  | 'round'
+  | 'ellipse'
+  | 'diamond'
+  | 'triangle'
+  | 'text'
+  | 'arrow'
+  | 'line'
 
 export interface BoardItem {
   id: string
@@ -126,6 +136,16 @@ export interface Subtask {
   done: boolean
 }
 
+export interface TaskAttachment {
+  id: string
+  name: string
+  url: string
+  kind: 'file' | 'link'
+  fileType?: string
+  size?: number
+  addedByName?: string
+}
+
 export interface Task {
   id: string
   title: string
@@ -138,6 +158,7 @@ export interface Task {
   projectId?: string | null
   labels?: string[] // label ids (see LABELS)
   subtasks?: Subtask[]
+  attachments?: TaskAttachment[]
   order: number
   createdBy: string
   completedAt?: Timestamp | null
