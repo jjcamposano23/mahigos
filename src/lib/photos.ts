@@ -14,7 +14,6 @@ export const BICOL_PHOTOS: BicolPhoto[] = [
   { src: '/photos/rodeo.jpg', label: 'Rodeo Festival', place: 'Masbate' },
   { src: '/photos/pili.jpg', label: 'Pili nuts', place: 'Bicol' },
   { src: '/photos/sili.jpg', label: 'Sili (labuyo)', place: 'Bicol' },
-  { src: '/photos/bicol-map.png', label: 'Bicol Region', place: 'Region V' },
 ]
 
 /** Just the image srcs, for carousels. */
