@@ -80,6 +80,7 @@ export interface Message {
   clipUrl?: string | null
   clipType?: 'audio' | 'video' | null
   edited?: boolean
+  unsent?: boolean // DM message withdrawn ("unsent a message")
   createdAt?: Timestamp
 }
 
@@ -249,8 +250,10 @@ export interface Task {
   description?: string
   status: TaskStatus
   priority: TaskPriority
-  assigneeUid?: string | null
+  assigneeUid?: string | null // legacy single assignee (kept in sync = first)
   assigneeName?: string | null
+  assigneeUids?: string[] // multiple assignees
+  assigneeNames?: string[]
   dueDate?: string | null // ISO date
   projectId?: string | null
   labels?: string[] // label ids (see LABELS)

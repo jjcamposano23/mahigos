@@ -2,6 +2,8 @@ import { useRef, useState } from 'react'
 import { X, Trash2, Plus, Paperclip, Link2, Upload, FileText, Loader2, Archive, ArchiveRestore } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { ReviewThread } from './ReviewThread'
+import { taskAssignees } from './taskUtils'
+import { Avatar } from '../../components/Avatar'
 import { ensureSubfolder, SHARED_FOLDER_ID, uploadToDrive } from '../../lib/googleDrive'
 import {
   LABELS,
@@ -50,6 +52,20 @@ export function TaskModal({
   const labels = task.labels ?? []
   const subtasks = task.subtasks ?? []
   const attachments = task.attachments ?? []
+  const assigned = taskAssignees(task)
+  const assignedSet = new Set(assigned.map((a) => a.uid))
+
+  const toggleAssignee = (m: UserProfile) => {
+    const cur = assigned.map((a) => a.uid)
+    const nextUids = cur.includes(m.uid) ? cur.filter((u) => u !== m.uid) : [...cur, m.uid]
+    const nextNames = nextUids.map((u) => members.find((x) => x.uid === u)?.displayName ?? '')
+    onPatch(task.id, {
+      assigneeUids: nextUids,
+      assigneeNames: nextNames,
+      assigneeUid: nextUids[0] ?? null,
+      assigneeName: nextNames[0] ?? null,
+    })
+  }
 
   const addAttachment = (a: TaskAttachment) =>
     onPatch(task.id, { attachments: [...attachments, a] })
@@ -202,27 +218,33 @@ export function TaskModal({
             </select>
           </label>
 
-          <label className="block">
-            <span className="mb-1 block text-xs font-medium text-muted">Assignee</span>
-            <select
-              value={task.assigneeUid ?? ''}
-              onChange={(e) => {
-                const m = members.find((x) => x.uid === e.target.value)
-                onPatch(task.id, {
-                  assigneeUid: m?.uid ?? null,
-                  assigneeName: m?.displayName ?? null,
-                })
-              }}
-              className={field}
-            >
-              <option value="">Unassigned</option>
-              {members.map((m) => (
-                <option key={m.uid} value={m.uid}>
-                  {m.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="col-span-2 block">
+            <span className="mb-1 block text-xs font-medium text-muted">
+              Assignees{assigned.length > 1 ? ` (${assigned.length})` : ''}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {members.map((m) => {
+                const on = assignedSet.has(m.uid)
+                return (
+                  <button
+                    key={m.uid}
+                    onClick={() => toggleAssignee(m)}
+                    className={`flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2.5 text-xs font-medium transition ${
+                      on
+                        ? 'border-brand bg-brand-soft text-brand'
+                        : 'border-border text-muted hover:text-ink'
+                    }`}
+                  >
+                    <Avatar profile={m} size={18} rounded="rounded-full" />
+                    {m.displayName.split(' ')[0]}
+                  </button>
+                )
+              })}
+            </div>
+            {assigned.length === 0 && (
+              <span className="mt-1 block text-[0.7rem] text-muted">Unassigned — tap a member to assign.</span>
+            )}
+          </div>
 
           <label className="col-span-2 block">
             <span className="mb-1 block text-xs font-medium text-muted">Due date</span>

@@ -130,6 +130,10 @@ export function MessageList({
                       </button>
                     </div>
                   </div>
+                ) : m.unsent ? (
+                  <p className="text-sm italic text-muted">
+                    🚫 {(m.authorName || 'Someone').split(' ')[0]} unsent a message
+                  </p>
                 ) : (
                   <>
                     {m.text && (
@@ -170,7 +174,7 @@ export function MessageList({
               </div>
 
               {/* own-message actions */}
-              {mine && !editing && (onEdit || onDelete) && (
+              {mine && !editing && !m.unsent && (onEdit || onDelete) && (
                 <div className="absolute right-2 top-1 hidden items-center gap-0.5 rounded-lg border border-border bg-surface p-0.5 shadow-sm group-hover:flex">
                   {onEdit && m.text && (
                     <button onClick={() => startEdit(m)} title="Edit" className="grid h-6 w-6 place-items-center rounded text-muted hover:bg-surface-2 hover:text-ink">

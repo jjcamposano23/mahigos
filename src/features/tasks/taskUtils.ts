@@ -1,6 +1,22 @@
 import { toISO } from '../../lib/dates'
 import type { Task } from '../../lib/types'
 
+/** Effective assignee list for a task (supports legacy single + multi). */
+export function taskAssignees(t: Pick<Task, 'assigneeUids' | 'assigneeNames' | 'assigneeUid' | 'assigneeName'>): {
+  uid: string
+  name: string
+}[] {
+  if (t.assigneeUids && t.assigneeUids.length)
+    return t.assigneeUids.map((uid, i) => ({ uid, name: t.assigneeNames?.[i] ?? '' }))
+  if (t.assigneeUid) return [{ uid: t.assigneeUid, name: t.assigneeName ?? '' }]
+  return []
+}
+
+export function isAssignedTo(t: Task, uid?: string): boolean {
+  if (!uid) return false
+  return taskAssignees(t).some((a) => a.uid === uid)
+}
+
 export type DueState = 'none' | 'overdue' | 'today' | 'soon' | 'later'
 
 const DAY = 86_400_000
@@ -58,7 +74,9 @@ export function applyFilters(tasks: Task[], f: TaskFilters): Task[] {
       if (pid !== f.projectId) return false
     }
     if (f.assignee !== 'all') {
-      if (f.assignee === '__none__' ? t.assigneeUid : t.assigneeUid !== f.assignee) return false
+      const who = taskAssignees(t)
+      if (f.assignee === '__none__' ? who.length > 0 : !who.some((a) => a.uid === f.assignee))
+        return false
     }
     if (f.label !== 'all' && !(t.labels ?? []).includes(f.label)) return false
     if (f.due === 'overdue' && dueState(t) !== 'overdue') return false

@@ -174,6 +174,17 @@ export function Messages() {
 
   const deleteMessage = async (m: Message) => {
     if (!selectedId) return
+    const sel = allChannels.find((c) => c.id === selectedId)
+    // In DMs we keep a tombstone ("unsent a message") instead of removing it.
+    if (sel?.kind === 'dm') {
+      await updateDoc(doc(db, 'channels', selectedId, 'messages', m.id), {
+        unsent: true,
+        text: '',
+        clipUrl: null,
+        clipType: null,
+      })
+      return
+    }
     await deleteDoc(doc(db, 'channels', selectedId, 'messages', m.id))
     if (m.parentId) {
       await updateDoc(doc(db, 'channels', selectedId, 'messages', m.parentId), {

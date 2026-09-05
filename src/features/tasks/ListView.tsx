@@ -10,7 +10,7 @@ import {
   type TaskStatus,
   type UserProfile,
 } from '../../lib/types'
-import { DUE_STYLE, dueLabel, dueState } from './taskUtils'
+import { DUE_STYLE, dueLabel, dueState, taskAssignees } from './taskUtils'
 
 export function ListView({
   tasks,
@@ -32,6 +32,13 @@ export function ListView({
       done: [],
     }
     for (const t of tasks) (map[t.status] ?? map.backlog).push(t)
+    const cmp = (a: Task, b: Task) => {
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate)
+      if (a.dueDate) return -1
+      if (b.dueDate) return 1
+      return (a.order ?? 0) - (b.order ?? 0)
+    }
+    for (const k of Object.keys(map) as TaskStatus[]) map[k].sort(cmp)
     return map
   }, [tasks])
 
@@ -105,19 +112,28 @@ export function ListView({
                           {dueLabel(t.dueDate)}
                         </span>
                       )}
-                      {t.assigneeName ? (
-                        <Avatar
-                          profile={
-                            (t.assigneeUid && memberMap[t.assigneeUid]) || {
-                              displayName: t.assigneeName,
-                            }
-                          }
-                          size={22}
-                          rounded="rounded-full"
-                        />
-                      ) : (
-                        <span className="h-[22px] w-[22px]" />
-                      )}
+                      {(() => {
+                        const who = taskAssignees(t)
+                        if (who.length === 0) return <span className="h-[22px] w-[22px]" />
+                        return (
+                          <span className="flex -space-x-1.5">
+                            {who.slice(0, 3).map((a) => (
+                              <Avatar
+                                key={a.uid}
+                                profile={memberMap[a.uid] ?? { displayName: a.name }}
+                                size={22}
+                                rounded="rounded-full"
+                                className="ring-2 ring-surface"
+                              />
+                            ))}
+                            {who.length > 3 && (
+                              <span className="grid h-[22px] w-[22px] place-items-center rounded-full bg-surface-2 text-[0.6rem] font-semibold text-muted ring-2 ring-surface">
+                                +{who.length - 3}
+                              </span>
+                            )}
+                          </span>
+                        )
+                      })()}
                     </button>
                   )
                 })}

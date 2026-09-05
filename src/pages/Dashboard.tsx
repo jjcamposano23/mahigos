@@ -21,6 +21,7 @@ import { bikolGreeting } from '../lib/bikol'
 import { toISO } from '../lib/dates'
 import { PhotoCarousel } from '../components/PhotoCarousel'
 import { BICOL_PHOTO_SRCS } from '../lib/photos'
+import { isAssignedTo } from '../features/tasks/taskUtils'
 
 export function Dashboard() {
   const { profile } = useAuth()
@@ -67,7 +68,7 @@ export function Dashboard() {
   ]
 
   const mine = tasks
-    .filter((t) => !t.archived && t.assigneeUid === profile?.uid && t.status !== 'done')
+    .filter((t) => !t.archived && isAssignedTo(t, profile?.uid) && t.status !== 'done')
     .slice(0, 5)
 
   const todayIso = toISO(new Date())

@@ -10,7 +10,7 @@ import {
   type TaskStatus,
   type UserProfile,
 } from '../../lib/types'
-import { DUE_STYLE, dueLabel, dueState } from './taskUtils'
+import { DUE_STYLE, dueLabel, dueState, taskAssignees } from './taskUtils'
 
 export function Board({
   tasks,
@@ -92,7 +92,7 @@ export function Board({
                 <TaskCard
                   key={t.id}
                   task={t}
-                  member={t.assigneeUid ? memberMap[t.assigneeUid] : undefined}
+                  memberMap={memberMap}
                   project={t.projectId ? projectMap[t.projectId] : undefined}
                   dragging={dragId === t.id}
                   onDragStart={() => setDragId(t.id)}
@@ -154,7 +154,7 @@ export function Board({
 
 function TaskCard({
   task,
-  member,
+  memberMap,
   project,
   dragging,
   onDragStart,
@@ -162,13 +162,14 @@ function TaskCard({
   onClick,
 }: {
   task: Task
-  member?: UserProfile
+  memberMap: Record<string, UserProfile>
   project?: Project
   dragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
   onClick: () => void
 }) {
+  const assignees = taskAssignees(task)
   const labels = (task.labels ?? []).map((id) => LABEL_MAP[id]).filter(Boolean)
   const subDone = (task.subtasks ?? []).filter((s) => s.done).length
   const subTotal = (task.subtasks ?? []).length
@@ -238,12 +239,23 @@ function TaskCard({
             </span>
           )}
         </div>
-        {task.assigneeName && (
-          <Avatar
-            profile={member ?? { displayName: task.assigneeName }}
-            size={20}
-            rounded="rounded-full"
-          />
+        {assignees.length > 0 && (
+          <div className="flex -space-x-1.5">
+            {assignees.slice(0, 3).map((a) => (
+              <Avatar
+                key={a.uid}
+                profile={memberMap[a.uid] ?? { displayName: a.name }}
+                size={20}
+                rounded="rounded-full"
+                className="ring-2 ring-surface"
+              />
+            ))}
+            {assignees.length > 3 && (
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-surface-2 text-[0.6rem] font-semibold text-muted ring-2 ring-surface">
+                +{assignees.length - 3}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </button>

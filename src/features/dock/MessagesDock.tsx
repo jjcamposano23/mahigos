@@ -10,7 +10,7 @@ import {
   deleteDoc,
 } from 'firebase/firestore'
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { ChevronLeft, Hash, Plus, MessageSquare } from 'lucide-react'
+import { ChevronLeft, Hash, Plus, MessageSquare, Pencil, Trash2, Check, X } from 'lucide-react'
 import { db, storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
 import { presenceStatus, PRESENCE_META } from '../../lib/presence'
@@ -38,6 +38,8 @@ export function MessagesDock() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [showNew, setShowNew] = useState(false)
+  const [editCh, setEditCh] = useState<string | null>(null)
+  const [editChName, setEditChName] = useState('')
 
   useEffect(() => {
     const unsubC = onSnapshot(collection(db, 'channels'), (snap) =>
@@ -126,6 +128,15 @@ export function MessagesDock() {
   }
   const deleteMessage = async (m: Message) => {
     if (!selectedId) return
+    if (selected?.kind === 'dm') {
+      await updateDoc(doc(db, 'channels', selectedId, 'messages', m.id), {
+        unsent: true,
+        text: '',
+        clipUrl: null,
+        clipType: null,
+      })
+      return
+    }
     await deleteDoc(doc(db, 'channels', selectedId, 'messages', m.id))
     if (m.parentId)
       await updateDoc(doc(db, 'channels', selectedId, 'messages', m.parentId), {
@@ -137,6 +148,17 @@ export function MessagesDock() {
     const r = storageRef(storage, `clips/${user!.uid}/${Date.now()}.webm`)
     await uploadBytes(r, blob)
     return getDownloadURL(r)
+  }
+
+  const renameChannel = async (id: string, name: string) => {
+    const clean = name.trim().replace(/^#/, '')
+    if (clean) await updateDoc(doc(db, 'channels', id), { name: clean })
+    setEditCh(null)
+  }
+  const deleteChannel = async (id: string) => {
+    if (!confirm('Delete this channel? Its messages will be removed.')) return
+    await deleteDoc(doc(db, 'channels', id))
+    if (selectedId === id) setSelectedId(null)
   }
 
   const startDm = async (m: UserProfile) => {
@@ -240,15 +262,58 @@ export function MessagesDock() {
         )}
 
         <div className="px-1 pb-1 text-[0.65rem] font-semibold uppercase text-muted">Channels</div>
-        {channels.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setSelectedId(c.id)}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-muted transition hover:bg-surface-2 hover:text-ink"
-          >
-            <Hash size={15} /> {c.name}
-          </button>
-        ))}
+        {channels.map((c) =>
+          editCh === c.id ? (
+            <div key={c.id} className="flex items-center gap-1 rounded-lg border border-brand/40 px-2 py-1">
+              <Hash size={14} className="text-muted" />
+              <input
+                autoFocus
+                value={editChName}
+                onChange={(e) => setEditChName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') renameChannel(c.id, editChName)
+                  if (e.key === 'Escape') setEditCh(null)
+                }}
+                className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none"
+              />
+              <button onClick={() => renameChannel(c.id, editChName)} className="text-brand" title="Save">
+                <Check size={14} />
+              </button>
+              <button onClick={() => setEditCh(null)} className="text-muted" title="Cancel">
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <div
+              key={c.id}
+              className="group flex items-center gap-1 rounded-lg pr-1 transition hover:bg-surface-2"
+            >
+              <button
+                onClick={() => setSelectedId(c.id)}
+                className="flex min-w-0 flex-1 items-center gap-2 px-2 py-2 text-left text-sm text-muted transition group-hover:text-ink"
+              >
+                <Hash size={15} className="shrink-0" /> <span className="truncate">{c.name}</span>
+              </button>
+              <button
+                onClick={() => {
+                  setEditCh(c.id)
+                  setEditChName(c.name)
+                }}
+                title="Rename channel"
+                className="hidden text-muted transition hover:text-brand group-hover:block"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={() => deleteChannel(c.id)}
+                title="Delete channel"
+                className="hidden text-muted transition hover:text-brand group-hover:block"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ),
+        )}
 
         <div className="mt-2 px-1 pb-1 text-[0.65rem] font-semibold uppercase text-muted">
           Direct messages
