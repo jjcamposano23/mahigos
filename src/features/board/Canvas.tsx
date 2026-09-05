@@ -29,6 +29,11 @@ import {
   Image as ImageIcon,
   Palette,
   Loader2,
+  ChevronUp,
+  ChevronDown,
+  Copy,
+  BringToFront,
+  SendToBack,
   X,
 } from 'lucide-react'
 import { db, storage } from '../../lib/firebase'
@@ -59,15 +64,22 @@ function colorFor(uid: string) {
 const CONNECTORS: BoardItemType[] = ['arrow', 'line']
 const DEFAULTS: Record<BoardItemType, { w: number; h: number; color: string }> = {
   note: { w: 170, h: 130, color: '#ffe08a' },
-  rect: { w: 150, h: 90, color: '#c7ddff' },
-  round: { w: 150, h: 90, color: '#c9ecd0' },
-  ellipse: { w: 130, h: 110, color: '#ffd0c7' },
-  diamond: { w: 130, h: 110, color: '#e6d2ff' },
-  triangle: { w: 130, h: 110, color: '#c7ddff' },
+  rect: { w: 120, h: 120, color: '#c7ddff' }, // default rectangle is a square
+  round: { w: 120, h: 120, color: '#c9ecd0' },
+  ellipse: { w: 120, h: 120, color: '#ffd0c7' }, // circle by default
+  diamond: { w: 120, h: 120, color: '#e6d2ff' },
+  triangle: { w: 120, h: 120, color: '#c7ddff' },
   text: { w: 180, h: 40, color: '#1c1a19' },
   arrow: { w: 0, h: 0, color: '#1c1a19' },
   line: { w: 0, h: 0, color: '#1c1a19' },
   image: { w: 220, h: 160, color: '#ffffff' },
+}
+// Shapes that get drag-to-size on creation (not text/note/connectors/image).
+const DRAG_SHAPES: BoardItemType[] = ['rect', 'round', 'ellipse', 'diamond', 'triangle']
+const DASH_MAP: Record<string, string | undefined> = {
+  solid: undefined,
+  dashed: '10 6',
+  dotted: '2 6',
 }
 
 const TOOLBAR: { tool: Tool; icon: typeof Square; label: string }[] = [
@@ -104,6 +116,7 @@ type Interaction =
   | { mode: 'resize'; id: string; handle: Handle; sx: number; sy: number; orig: BoardItem }
   | { mode: 'endpoint'; id: string; which: 'start' | 'end' }
   | { mode: 'draw'; id: string }
+  | { mode: 'createShape'; id: string; ox: number; oy: number; type: BoardItemType }
 
 const bbox = (i: BoardItem) =>
   i.type === 'arrow' || i.type === 'line'
@@ -114,6 +127,22 @@ const bbox = (i: BoardItem) =>
         h: Math.abs((i.y2 ?? i.y) - i.y),
       }
     : { x: i.x, y: i.y, w: i.w, h: i.h }
+
+/** Snap points for a shape: corners, edge midpoints, and center. */
+function anchorsOf(i: BoardItem) {
+  const b = bbox(i)
+  return [
+    { x: b.x, y: b.y },
+    { x: b.x + b.w, y: b.y },
+    { x: b.x, y: b.y + b.h },
+    { x: b.x + b.w, y: b.y + b.h },
+    { x: b.x + b.w / 2, y: b.y },
+    { x: b.x + b.w / 2, y: b.y + b.h },
+    { x: b.x, y: b.y + b.h / 2 },
+    { x: b.x + b.w, y: b.y + b.h / 2 },
+    { x: b.x + b.w / 2, y: b.y + b.h / 2 },
+  ]
+}
 
 export function Canvas({ boardId }: { boardId: string }) {
   const { user, profile } = useAuth()
@@ -134,12 +163,15 @@ export function Canvas({ boardId }: { boardId: string }) {
   const [members, setMembers] = useState<UserProfile[]>([])
   const [uploading, setUploading] = useState(false)
   const [colorOpen, setColorOpen] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const it = useRef<Interaction>(null)
   const lastCursor = useRef(0)
   const myColor = colorFor(user?.uid ?? 'x')
   const targets = useMemo(() => mentionTargets(members), [members])
+  const itemsRef = useRef<BoardItem[]>(items)
+  itemsRef.current = items
 
   useEffect(() => {
     const unsubN = onSnapshot(col, (snap) =>
@@ -234,18 +266,115 @@ export function Canvas({ boardId }: { boardId: string }) {
     setSel(new Set())
   }
 
+  const nextZ = () => Math.max(0, ...itemsRef.current.map((i) => i.z ?? 0)) + 1
+
+  // Snap a connector endpoint to the nearest shape anchor.
+  const snapEndpoint = (x: number, y: number, excludeId: string) => {
+    let best: { x: number; y: number } | null = null
+    let bd = 12 / zoom
+    for (const i of itemsRef.current) {
+      if (i.id === excludeId || CONNECTORS.includes(i.type)) continue
+      for (const a of anchorsOf(i)) {
+        const d = Math.hypot(a.x - x, a.y - y)
+        if (d < bd) {
+          bd = d
+          best = a
+        }
+      }
+    }
+    return best ?? { x, y }
+  }
+
+  // ── Undo / redo (snapshot-based, reconciled to Firestore) ──
+  const histRef = useRef<BoardItem[][]>([])
+  const histPos = useRef(-1)
+  const applyingRef = useRef(false)
+  useEffect(() => {
+    if (applyingRef.current || it.current) return
+    const snap = JSON.parse(JSON.stringify(items)) as BoardItem[]
+    const h = histRef.current
+    if (histPos.current >= 0 && JSON.stringify(h[histPos.current]) === JSON.stringify(snap)) return
+    h.splice(histPos.current + 1)
+    h.push(snap)
+    while (h.length > 40) h.shift()
+    histPos.current = h.length - 1
+  }, [items])
+
+  const applySnapshot = async (target: BoardItem[]) => {
+    applyingRef.current = true
+    const tgtIds = new Set(target.map((i) => i.id))
+    for (const i of itemsRef.current) if (!tgtIds.has(i.id)) await deleteDoc(doc(col, i.id)).catch(() => {})
+    for (const t of target) {
+      const { id, ...data } = t
+      await setDoc(doc(col, id), data).catch(() => {})
+    }
+    setTimeout(() => (applyingRef.current = false), 350)
+  }
+  const undo = () => {
+    if (histPos.current > 0) {
+      histPos.current -= 1
+      void applySnapshot(histRef.current[histPos.current])
+    }
+  }
+  const redo = () => {
+    if (histPos.current < histRef.current.length - 1) {
+      histPos.current += 1
+      void applySnapshot(histRef.current[histPos.current])
+    }
+  }
+
   const create = async (type: BoardItemType, wx: number, wy: number) => {
     const d = DEFAULTS[type]
+    const z = nextZ()
+    const uid = user?.uid ?? ''
     if (CONNECTORS.includes(type)) {
-      const refDoc = await addDoc(col, { type, x: wx, y: wy, w: 0, h: 0, x2: wx, y2: wy, text: '', color: '#1c1a19', authorUid: user?.uid ?? '' })
+      const refDoc = await addDoc(col, { type, x: wx, y: wy, w: 0, h: 0, x2: wx, y2: wy, text: '', color: '#1c1a19', thickness: 2.5, dash: 'solid', z, authorUid: uid })
       it.current = { mode: 'draw', id: refDoc.id }
       setSel(new Set([refDoc.id]))
       return
     }
-    const refDoc = await addDoc(col, { type, x: Math.round(wx - d.w / 2), y: Math.round(wy - d.h / 2), w: d.w, h: d.h, text: '', color: d.color, authorUid: user?.uid ?? '' })
+    // Shapes: start a drag-to-size gesture (click = default size on commit).
+    if (DRAG_SHAPES.includes(type)) {
+      const refDoc = await addDoc(col, { type, x: Math.round(wx), y: Math.round(wy), w: 1, h: 1, text: '', color: d.color, z, authorUid: uid })
+      it.current = { mode: 'createShape', id: refDoc.id, ox: wx, oy: wy, type }
+      setSel(new Set([refDoc.id]))
+      return
+    }
+    // Note / text — placed at default size (keep the tool active).
+    const refDoc = await addDoc(col, { type, x: Math.round(wx - d.w / 2), y: Math.round(wy - d.h / 2), w: d.w, h: d.h, text: '', color: d.color, z, authorUid: uid })
     setSel(new Set([refDoc.id]))
-    setTool('select')
     if (type === 'text' || type === 'note') setEditingId(refDoc.id)
+  }
+
+  const duplicate = async () => {
+    for (const s of itemsRef.current.filter((i) => sel.has(i.id))) {
+      const { id, ...data } = s
+      void id
+      await addDoc(col, { ...data, x: (data.x ?? 0) + 16, y: (data.y ?? 0) + 16, z: nextZ() })
+    }
+  }
+  const startConnectorFrom = async (item: BoardItem, side: 'n' | 's' | 'e' | 'w') => {
+    const b = bbox(item)
+    const p =
+      side === 'n' ? { x: b.x + b.w / 2, y: b.y } :
+      side === 's' ? { x: b.x + b.w / 2, y: b.y + b.h } :
+      side === 'w' ? { x: b.x, y: b.y + b.h / 2 } :
+      { x: b.x + b.w, y: b.y + b.h / 2 }
+    const refDoc = await addDoc(col, { type: 'arrow', x: p.x, y: p.y, w: 0, h: 0, x2: p.x, y2: p.y, text: '', color: '#1c1a19', thickness: 2.5, dash: 'solid', z: nextZ(), authorUid: user?.uid ?? '' })
+    it.current = { mode: 'draw', id: refDoc.id }
+    setSel(new Set([refDoc.id]))
+  }
+
+  const arrange = (kind: 'front' | 'back' | 'forward' | 'backward') => {
+    const zs = itemsRef.current.map((i) => i.z ?? 0)
+    const maxZ = Math.max(0, ...zs)
+    const minZ = Math.min(0, ...zs)
+    for (const s of itemsRef.current.filter((i) => sel.has(i.id))) {
+      const cur = s.z ?? 0
+      const z =
+        kind === 'front' ? maxZ + 1 : kind === 'back' ? minZ - 1 : kind === 'forward' ? cur + 1.5 : cur - 1.5
+      patch(s.id, { z })
+    }
   }
 
   // ---------- container pointer handlers ----------
@@ -327,6 +456,22 @@ export function Canvas({ boardId }: { boardId: string }) {
           return { ...i, x: o.x + dx, y: o.y + dy, ...(o.x2 != null ? { x2: o.x2 + dx, y2: (o.y2 ?? 0) + dy } : {}) }
         }),
       )
+    } else if (cur?.mode === 'createShape') {
+      let nx = Math.min(cur.ox, w.x)
+      let ny = Math.min(cur.oy, w.y)
+      let nw = Math.abs(w.x - cur.ox)
+      let nh = Math.abs(w.y - cur.oy)
+      if (cur.type === 'ellipse') {
+        const s = Math.max(nw, nh)
+        nx = w.x < cur.ox ? cur.ox - s : cur.ox
+        ny = w.y < cur.oy ? cur.oy - s : cur.oy
+        nw = s
+        nh = s
+      }
+      nw = Math.max(1, nw)
+      nh = Math.max(1, nh)
+      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, x: nx, y: ny, w: nw, h: nh } : i)))
+      setDims({ x: nx + nw / 2, y: ny, w: nw, h: nh })
     } else if (cur?.mode === 'resize') {
       const o = cur.orig
       let { x, y, w: ww, h: hh } = o
@@ -336,12 +481,25 @@ export function Canvas({ boardId }: { boardId: string }) {
       if (cur.handle.includes('s')) hh = Math.max(20, o.h + dy)
       if (cur.handle.includes('w')) { ww = Math.max(24, o.w - dx); x = o.x + (o.w - ww) }
       if (cur.handle.includes('n')) { hh = Math.max(20, o.h - dy); y = o.y + (o.h - hh) }
-      setItems((arr) => arr.map((i) => (i.id === o.id ? { ...i, x, y, w: ww, h: hh } : i)))
+      if (o.type === 'ellipse') {
+        const s = Math.max(ww, hh)
+        ww = s
+        hh = s
+        if (cur.handle.includes('w')) x = o.x + (o.w - ww)
+        if (cur.handle.includes('n')) y = o.y + (o.h - hh)
+      }
+      const extra =
+        o.type === 'text'
+          ? { fontSize: Math.max(6, Math.round((o.fontSize ?? 16) * (hh / (o.h || 1)))) }
+          : {}
+      setItems((arr) => arr.map((i) => (i.id === o.id ? { ...i, x, y, w: ww, h: hh, ...extra } : i)))
       setDims({ x: x + ww / 2, y, w: ww, h: hh })
     } else if (cur?.mode === 'endpoint') {
-      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, ...(cur.which === 'start' ? { x: w.x, y: w.y } : { x2: w.x, y2: w.y }) } : i)))
+      const p = snapEndpoint(w.x, w.y, cur.id)
+      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, ...(cur.which === 'start' ? { x: p.x, y: p.y } : { x2: p.x, y2: p.y }) } : i)))
     } else if (cur?.mode === 'draw') {
-      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, x2: w.x, y2: w.y } : i)))
+      const p = snapEndpoint(w.x, w.y, cur.id)
+      setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, x2: p.x, y2: p.y } : i)))
     }
 
     const now = Date.now()
@@ -367,7 +525,15 @@ export function Canvas({ boardId }: { boardId: string }) {
       }
     } else if (cur.mode === 'resize') {
       const c = items.find((i) => i.id === cur.id)
-      if (c) patch(cur.id, { x: c.x, y: c.y, w: c.w, h: c.h })
+      if (c) patch(cur.id, { x: c.x, y: c.y, w: c.w, h: c.h, ...(c.type === 'text' ? { fontSize: c.fontSize ?? 16 } : {}) })
+    } else if (cur.mode === 'createShape') {
+      const c = items.find((i) => i.id === cur.id)
+      if (c) {
+        if (c.w < 8 && c.h < 8) {
+          const d = DEFAULTS[cur.type]
+          patch(cur.id, { x: Math.round(cur.ox - d.w / 2), y: Math.round(cur.oy - d.h / 2), w: d.w, h: d.h })
+        } else patch(cur.id, { x: c.x, y: c.y, w: c.w, h: c.h })
+      }
     } else if (cur.mode === 'endpoint' || cur.mode === 'draw') {
       const c = items.find((i) => i.id === cur.id)
       if (c) patch(cur.id, { x: c.x, y: c.y, x2: c.x2, y2: c.y2 })
@@ -416,6 +582,25 @@ export function Canvas({ boardId }: { boardId: string }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setTool('select')
+        setEditingId(null)
+        setSel(new Set())
+        setMenu(null)
+        return
+      }
+      const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key.toLowerCase() === 'z') {
+        e.preventDefault()
+        if (e.shiftKey) redo()
+        else undo()
+        return
+      }
+      if (mod && e.key.toLowerCase() === 'y') {
+        e.preventDefault()
+        redo()
+        return
+      }
       if (editingId) return
       if ((e.key === 'Delete' || e.key === 'Backspace') && sel.size) {
         e.preventDefault()
@@ -431,6 +616,13 @@ export function Canvas({ boardId }: { boardId: string }) {
   const first = selArr[0]
   const textLike =
     selArr.length > 0 && selArr.every((i) => !CONNECTORS.includes(i.type) && i.type !== 'image')
+  const connLike = selArr.length > 0 && selArr.every((i) => CONNECTORS.includes(i.type))
+  const ordered = [...items].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
+  const curSize = first?.fontSize ?? (first?.type === 'text' ? 16 : 14)
+  const bumpSize = (delta: number) => {
+    const n = Math.max(6, Math.min(400, curSize + delta))
+    selArr.forEach((s) => patch(s.id, { fontSize: n }))
+  }
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -472,17 +664,64 @@ export function Canvas({ boardId }: { boardId: string }) {
                     </option>
                   ))}
                 </select>
+                <div className="flex items-center rounded-lg border border-border">
+                  <button onClick={() => bumpSize(-2)} title="Smaller" className="grid h-8 w-6 place-items-center text-muted hover:text-ink">
+                    <ChevronDown size={14} />
+                  </button>
+                  <input
+                    type="number"
+                    list="wb-sizes"
+                    value={curSize}
+                    onChange={(e) => {
+                      const n = Number(e.target.value)
+                      if (n) selArr.forEach((s) => patch(s.id, { fontSize: Math.max(6, Math.min(400, n)) }))
+                    }}
+                    title="Font size (type a value)"
+                    className="h-8 w-11 bg-transparent text-center text-xs text-ink outline-none"
+                  />
+                  <button onClick={() => bumpSize(2)} title="Larger" className="grid h-8 w-6 place-items-center text-muted hover:text-ink">
+                    <ChevronUp size={14} />
+                  </button>
+                </div>
+                <datalist id="wb-sizes">
+                  {BOARD_FONT_SIZES.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+              </>
+            )}
+
+            {/* Connector styling */}
+            {connLike && (
+              <>
+                <button
+                  onClick={() => selArr.forEach((s) => patch(s.id, { type: s.type === 'arrow' ? 'line' : 'arrow' }))}
+                  title="Toggle arrow / line"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink"
+                >
+                  {first?.type === 'arrow' ? <MoveUpRight size={16} /> : <Minus size={16} />}
+                </button>
                 <select
-                  value={first?.fontSize ?? (first?.type === 'text' ? 16 : 14)}
-                  onChange={(e) => selArr.forEach((s) => patch(s.id, { fontSize: Number(e.target.value) }))}
-                  title="Font size"
+                  value={first?.thickness ?? 2.5}
+                  onChange={(e) => selArr.forEach((s) => patch(s.id, { thickness: Number(e.target.value) }))}
+                  title="Thickness"
                   className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
                 >
-                  {BOARD_FONT_SIZES.map((n) => (
+                  {[1, 2, 3, 4, 6, 8].map((n) => (
                     <option key={n} value={n}>
-                      {n}
+                      {n}px
                     </option>
                   ))}
+                </select>
+                <select
+                  value={first?.dash ?? 'solid'}
+                  onChange={(e) => selArr.forEach((s) => patch(s.id, { dash: e.target.value as 'solid' | 'dashed' | 'dotted' }))}
+                  title="Line style"
+                  className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
+                >
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
                 </select>
               </>
             )}
@@ -533,8 +772,15 @@ export function Canvas({ boardId }: { boardId: string }) {
         onPointerLeave={commit}
         onWheel={onWheel}
         onContextMenu={(e) => e.preventDefault()}
+        onPointerDownCapture={() => setMenu(null)}
         className="wb-grid absolute inset-0 select-none"
-        style={{ cursor: tool === 'select' ? 'default' : 'crosshair', backgroundPosition: `${pan.x}px ${pan.y}px`, backgroundSize: `${26 * zoom}px ${26 * zoom}px` }}
+        style={{
+          cursor: tool === 'select' ? 'default' : 'crosshair',
+          backgroundColor: '#ffffff', // board stays white even in dark mode
+          ['--grid' as string]: '#e6e8ec',
+          backgroundPosition: `${pan.x}px ${pan.y}px`,
+          backgroundSize: `${26 * zoom}px ${26 * zoom}px`,
+        } as React.CSSProperties}
       >
         <div data-world className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
           {/* connectors */}
@@ -546,10 +792,10 @@ export function Canvas({ boardId }: { boardId: string }) {
                 </marker>
               ))}
             </defs>
-            {items.filter((i) => CONNECTORS.includes(i.type)).map((a) => (
-              <g key={a.id}>
-                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-move" onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)} />
-                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={2.5} markerEnd={a.type === 'arrow' ? `url(#ar-${safeId(a.color)})` : undefined} />
+            {ordered.filter((i) => CONNECTORS.includes(i.type)).map((a) => (
+              <g key={a.id} style={{ opacity: a.opacity ?? 1 }}>
+                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-move" onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, a)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setSel(new Set([a.id])); setMenu({ x: e.clientX, y: e.clientY }) }} />
+                <line x1={a.x} y1={a.y} x2={a.x2} y2={a.y2} stroke={a.color} strokeWidth={a.thickness ?? 2.5} strokeDasharray={DASH_MAP[a.dash ?? 'solid']} strokeLinecap="round" markerEnd={a.type === 'arrow' ? `url(#ar-${safeId(a.color)})` : undefined} />
                 {sel.has(a.id) && (
                   <>
                     <circle cx={a.x} cy={a.y} r={6} fill="#fff" stroke="var(--brand)" strokeWidth={2} className="pointer-events-auto cursor-crosshair" onPointerDown={(e) => { e.stopPropagation(); it.current = { mode: 'endpoint', id: a.id, which: 'start' } }} />
@@ -563,13 +809,15 @@ export function Canvas({ boardId }: { boardId: string }) {
             {guides.h.map((h, i) => <line key={'h' + i} x1={-4000} y1={h} x2={4000} y2={h} stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />)}
           </svg>
 
-          {items.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
+          {ordered.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
             <ItemView key={item.id} item={item} selected={sel.has(item.id)} editing={editingId === item.id} zoom={zoom}
               targets={targets}
               onPointerDown={(e) => startMove(e, item)}
               onDoubleClick={() => { if (item.type === 'image') return; setSel(new Set([item.id])); setEditingId(item.id) }}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setSel(new Set([item.id])); setMenu({ x: e.clientX, y: e.clientY }) }}
               onChangeText={(text) => onChangeText(item.id, text)}
               onEndEdit={() => setEditingId(null)}
+              onStartConnector={(side) => void startConnectorFrom(item, side)}
               onResize={(e, h) => startResize(e, item, h)} />
           ))}
 
@@ -594,6 +842,56 @@ export function Canvas({ boardId }: { boardId: string }) {
           ))}
         </div>
       </div>
+
+      {menu && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu(null) }}
+          />
+          <div
+            className="fixed z-50 w-52 rounded-xl border border-border bg-surface p-1 text-sm shadow-xl"
+            style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 340) }}
+          >
+            <button onClick={() => { void duplicate(); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <Copy size={14} /> Duplicate
+            </button>
+            <button onClick={() => { selArr.forEach((s) => patch(s.id, { text: '' })); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <X size={14} /> Clear content
+            </button>
+            <div className="my-1 border-t border-border" />
+            <button onClick={() => { arrange('front'); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <BringToFront size={14} /> Bring to front
+            </button>
+            <button onClick={() => { arrange('forward'); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <ChevronUp size={14} /> Bring forward
+            </button>
+            <button onClick={() => { arrange('backward'); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <ChevronDown size={14} /> Send backward
+            </button>
+            <button onClick={() => { arrange('back'); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-ink transition hover:bg-surface-2">
+              <SendToBack size={14} /> Send to back
+            </button>
+            <div className="my-1 border-t border-border" />
+            <div className="px-3 py-1.5">
+              <div className="mb-1 text-[0.62rem] font-semibold uppercase tracking-wide text-muted">Opacity</div>
+              <input
+                type="range"
+                min={10}
+                max={100}
+                value={Math.round((first?.opacity ?? 1) * 100)}
+                onChange={(e) => selArr.forEach((s) => patch(s.id, { opacity: Number(e.target.value) / 100 }))}
+                className="h-1 w-full accent-brand"
+              />
+            </div>
+            <div className="my-1 border-t border-border" />
+            <button onClick={() => { del([...sel]); setMenu(null) }} className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-brand transition hover:bg-brand-soft">
+              <Trash2 size={14} /> Delete
+            </button>
+          </div>
+        </>
+      )}
 
       {library && <ShapeLibrary onPick={(t) => { setTool(t); setLibrary(false) }} onClose={() => setLibrary(false)} />}
     </div>
@@ -625,7 +923,7 @@ function ShapeLibrary({ onPick, onClose }: { onPick: (t: BoardItemType) => void;
 }
 
 function ItemView({
-  item, selected, editing, zoom, targets, onPointerDown, onDoubleClick, onChangeText, onEndEdit, onResize,
+  item, selected, editing, zoom, targets, onPointerDown, onDoubleClick, onContextMenu, onChangeText, onEndEdit, onStartConnector, onResize,
 }: {
   item: BoardItem
   selected: boolean
@@ -634,12 +932,15 @@ function ItemView({
   targets: MentionTarget[]
   onPointerDown: (e: React.PointerEvent) => void
   onDoubleClick: () => void
+  onContextMenu: (e: React.MouseEvent) => void
   onChangeText: (text: string) => void
   onEndEdit: () => void
+  onStartConnector: (side: 'n' | 's' | 'e' | 'w') => void
   onResize: (e: React.PointerEvent, h: Handle) => void
 }) {
   const isText = item.type === 'text'
   const isImage = item.type === 'image'
+  const [hover, setHover] = useState(false)
   const [val, setVal] = useState(item.text ?? '')
   const [mq, setMq] = useState<string | null>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
@@ -708,8 +1009,9 @@ function ItemView({
 
   return (
     <div className={`absolute flex items-center justify-center ${cls} ${selected ? 'ring-2 ring-brand' : ''}`}
-      style={{ ...style, ...inner, cursor: editing ? 'text' : 'move' }}
-      onPointerDown={onPointerDown} onDoubleClick={onDoubleClick}>
+      style={{ ...style, ...inner, opacity: item.opacity ?? 1, cursor: editing ? 'text' : 'move' }}
+      onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       {clip && <span className="pointer-events-none absolute inset-0" style={{ background: item.color, clipPath: clip, border: '1px solid rgba(0,0,0,.15)' }} />}
 
       {isImage ? (
@@ -758,6 +1060,29 @@ function ItemView({
           className="absolute z-20 rounded-sm border border-white bg-brand"
           style={{ ...hpos[h], width: 8 / zoom, height: 8 / zoom, cursor: handleCursor[h] }} />
       ))}
+
+      {/* Connector nubs — hover a shape to drag an arrow out from a side */}
+      {hover && !selected && !editing && item.type !== 'text' && (
+        <>
+          {(['n', 's', 'e', 'w'] as const).map((side) => {
+            const pos: Record<string, React.CSSProperties> = {
+              n: { left: '50%', top: -12 / zoom, marginLeft: -6 / zoom },
+              s: { left: '50%', bottom: -12 / zoom, marginLeft: -6 / zoom },
+              e: { right: -12 / zoom, top: '50%', marginTop: -6 / zoom },
+              w: { left: -12 / zoom, top: '50%', marginTop: -6 / zoom },
+            }
+            return (
+              <span
+                key={side}
+                title="Drag to connect"
+                onPointerDown={(e) => { e.stopPropagation(); onStartConnector(side) }}
+                className="absolute z-30 rounded-full border-2 border-white bg-brand shadow"
+                style={{ ...pos[side], width: 12 / zoom, height: 12 / zoom, cursor: 'crosshair' }}
+              />
+            )
+          })}
+        </>
+      )}
     </div>
   )
 }

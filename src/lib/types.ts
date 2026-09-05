@@ -146,6 +146,10 @@ export interface BoardItem {
   color: string
   fontFamily?: string
   fontSize?: number
+  z?: number // stacking order
+  opacity?: number // 0..1
+  thickness?: number // connector stroke width
+  dash?: 'solid' | 'dashed' | 'dotted'
   authorUid: string
 }
 
@@ -160,7 +164,7 @@ export const BOARD_FONTS: { label: string; value: string }[] = [
   { label: 'Classic', value: "'Times New Roman', serif" },
   { label: 'Wide', value: "Verdana, Geneva, sans-serif" },
 ]
-export const BOARD_FONT_SIZES = [12, 14, 16, 20, 24, 32, 40, 56, 72]
+export const BOARD_FONT_SIZES = [12, 14, 16, 20, 24, 32, 40, 56, 72, 80, 144, 288]
 
 // Sticky-note / shape fill palette (light, Miro-like)
 export const NOTE_COLORS = ['#ffe08a', '#ffd0c7', '#c9ecd0', '#c7ddff', '#e6d2ff', '#ffffff']
