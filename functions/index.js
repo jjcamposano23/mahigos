@@ -158,24 +158,31 @@ exports.createZoomMeeting = onCall(
   return { id: docRef.id, joinUrl: m.join_url, startUrl: m.start_url }
 })
 
-exports.updateZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
+exports.updateZoomMeeting = onCall(
+  { secrets: [...ZOOM_SECRETS, GMAIL_APP_PASSWORD] },
+  async (req) => {
   assertAllowed(req)
   const { id, topic, startTime, duration, agenda, timezone } = req.data || {}
   if (!id) throw new HttpsError('invalid-argument', 'A meeting id is required.')
   const doc = await db.collection('meetings').doc(id).get()
   if (!doc.exists) throw new HttpsError('not-found', 'Meeting not found.')
   const zoomId = doc.data().zoomId
+  const prevInvitees = doc.data().invitees || []
+  const hasInvitees = (req.data || {}).invitees !== undefined
+  const invitees = hasInvitees ? parseEmails((req.data || {}).invitees) : prevInvitees
   const token = await zoomToken()
+  const body = {
+    topic,
+    start_time: startTime,
+    duration,
+    timezone: timezone || TZ,
+    agenda,
+  }
+  if (hasInvitees) body.settings = { meeting_invitees: invitees.map((e) => ({ email: e })) }
   const res = await fetch(`https://api.zoom.us/v2/meetings/${zoomId}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      topic,
-      start_time: startTime,
-      duration,
-      timezone: timezone || TZ,
-      agenda,
-    }),
+    body: JSON.stringify(body),
   })
   if (!res.ok && res.status !== 204) {
     const t = await res.text()
@@ -183,6 +190,7 @@ exports.updateZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
   }
   const patch = { topic, startTime, duration, agenda, timezone: timezone || TZ }
   Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
+  if (hasInvitees) patch.invitees = invitees
   await doc.ref.update(patch)
   if (doc.data().eventId && (topic || startTime)) {
     await db
@@ -194,7 +202,63 @@ exports.updateZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
       })
       .catch(() => {})
   }
+  // Email any newly added invitees the join link.
+  const added = invitees.filter((e) => !prevInvitees.includes(e))
+  if (added.length) {
+    const m = doc.data()
+    const when = new Date(startTime || m.startTime).toLocaleString('en-US', { timeZone: timezone || TZ })
+    const html = `
+      <p style="margin:0 0 10px">You have been invited to a Zoom meeting:</p>
+      <div style="border-left:3px solid #ef3422;background:#fdece9;padding:10px 12px;border-radius:6px">
+        <div style="font-weight:bold;font-size:15px">${topic || m.topic}</div>
+        <div style="color:#555;font-size:13px;margin-top:4px">${when} (${timezone || TZ})</div>
+        <div style="margin-top:10px"><a href="${m.joinUrl}" style="color:#ef3422;font-weight:bold">Join the meeting</a>${m.password ? ` · Passcode: ${m.password}` : ''}</div>
+      </div>`
+    await sendMail(added, `Zoom invite: ${topic || m.topic}`, shell('You are invited to a meeting', html)).catch(() => {})
+  }
   return { ok: true }
+})
+
+exports.getMeetingDetails = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
+  assertAllowed(req)
+  const { id } = req.data || {}
+  if (!id) throw new HttpsError('invalid-argument', 'A meeting id is required.')
+  const doc = await db.collection('meetings').doc(id).get()
+  if (!doc.exists) throw new HttpsError('not-found', 'Meeting not found.')
+  const zoomId = doc.data().zoomId
+  const token = await zoomToken()
+  const auth = { Authorization: `Bearer ${token}` }
+  const out = { invitees: doc.data().invitees || [], participants: [], summary: null, notes: [] }
+
+  // Attendees of the most recent past instance.
+  try {
+    const r = await fetch(`https://api.zoom.us/v2/past_meetings/${zoomId}/participants?page_size=300`, { headers: auth })
+    if (r.ok) {
+      const d = await r.json()
+      out.participants = (d.participants || []).map((p) => ({
+        name: p.name || p.user_name || 'Guest',
+        email: p.user_email || '',
+      }))
+    } else {
+      out.notes.push(`Attendee report unavailable (${r.status}). It needs the report_meetings:read:admin scope and a finished meeting.`)
+    }
+  } catch {
+    out.notes.push('Could not load the attendee report.')
+  }
+
+  // Zoom AI Companion meeting summary.
+  try {
+    const r = await fetch(`https://api.zoom.us/v2/meetings/${zoomId}/meeting_summary`, { headers: auth })
+    if (r.ok) {
+      out.summary = await r.json()
+    } else {
+      out.notes.push(`AI summary unavailable (${r.status}). It needs AI Companion enabled and the meeting_summary:read:admin scope.`)
+    }
+  } catch {
+    out.notes.push('Could not load the AI summary.')
+  }
+
+  return out
 })
 
 exports.deleteZoomMeeting = onCall({ secrets: ZOOM_SECRETS }, async (req) => {

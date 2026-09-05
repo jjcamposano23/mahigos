@@ -41,6 +41,14 @@ export function Board({
       done: [],
     }
     for (const t of tasks) (map[t.status] ?? map.backlog).push(t)
+    // Within each column, sort by due date (nearest first); undated last.
+    const cmp = (a: Task, b: Task) => {
+      if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate)
+      if (a.dueDate) return -1
+      if (b.dueDate) return 1
+      return (a.order ?? 0) - (b.order ?? 0)
+    }
+    for (const k of Object.keys(map) as TaskStatus[]) map[k].sort(cmp)
     return map
   }, [tasks])
 

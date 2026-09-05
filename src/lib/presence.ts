@@ -47,8 +47,8 @@ export const PRESENCE_META: Record<
   PresenceStatus,
   { label: string; color: string }
 > = {
-  online: { label: 'Online', color: '#22c55e' },
-  idle: { label: 'Idle', color: '#f59e0b' },
-  offline: { label: 'Offline', color: '#9ca3af' },
-  out: { label: 'Out', color: '#ef4444' },
+  online: { label: 'Online', color: '#16c60c' }, // bright green
+  idle: { label: 'Idle', color: '#f59e0b' }, // orange
+  offline: { label: 'Offline', color: '#9ca3af' }, // grey
+  out: { label: 'Out', color: '#8b5cf6' }, // violet
 }

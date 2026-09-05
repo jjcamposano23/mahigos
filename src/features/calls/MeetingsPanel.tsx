@@ -11,6 +11,10 @@ import {
   Loader2,
   CalendarClock,
   Lock,
+  Info,
+  Users,
+  Sparkles,
+  Mail,
 } from 'lucide-react'
 import { db, functions } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
@@ -39,7 +43,7 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
   )
   const [duration, setDuration] = useState(existing?.duration ?? 60)
   const [agenda, setAgenda] = useState(existing?.agenda ?? '')
-  const [invitees, setInvitees] = useState('')
+  const [invitees, setInvitees] = useState((existing?.invitees ?? []).join(', '))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const isEdit = !!existing
@@ -59,6 +63,7 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
           duration,
           agenda: agenda.trim(),
           timezone: 'Asia/Manila',
+          invitees,
         })
       } else {
         const create = httpsCallable(functions, 'createZoomMeeting')
@@ -139,22 +144,16 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
           placeholder="What will you cover?"
         />
 
-        {!isEdit && (
-          <>
-            <label className="mt-3 block text-xs font-semibold text-muted">
-              Invite emails (optional)
-            </label>
-            <input
-              value={invitees}
-              onChange={(e) => setInvitees(e.target.value)}
-              className={field}
-              placeholder="name@email.com, another@email.com"
-            />
-            <span className="mt-1 block text-[0.7rem] text-muted">
-              We'll email them the join link from the OSEC account.
-            </span>
-          </>
-        )}
+        <label className="mt-3 block text-xs font-semibold text-muted">Invited guests (emails)</label>
+        <input
+          value={invitees}
+          onChange={(e) => setInvitees(e.target.value)}
+          className={field}
+          placeholder="name@email.com, another@email.com"
+        />
+        <span className="mt-1 block text-[0.7rem] text-muted">
+          Comma-separated. Newly added guests are emailed the join link from the OSEC account.
+        </span>
 
         {error && <p className="mt-3 text-xs text-brand">{error}</p>}
 
@@ -176,12 +175,148 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
   )
 }
 
+interface MeetingDetails {
+  invitees: string[]
+  participants: { name: string; email: string }[]
+  summary: {
+    summary_overview?: string
+    summary_details?: { label?: string; summary?: string }[]
+    next_steps?: string[]
+  } | null
+  notes: string[]
+}
+
+function DetailsModal({ meeting, onClose }: { meeting: Meeting; onClose: () => void }) {
+  const [data, setData] = useState<MeetingDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const fn = httpsCallable(functions, 'getMeetingDetails')
+        const res = await fn({ id: meeting.id })
+        setData(res.data as MeetingDetails)
+      } catch (e) {
+        setError((e as { message?: string }).message || 'Could not load meeting details.')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [meeting.id])
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-surface p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-display text-lg font-bold text-ink">{meeting.topic}</h3>
+            <p className="text-xs text-muted">{fmtWhen(meeting.startTime)} · {meeting.duration} min</p>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={18} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="grid place-items-center py-10 text-muted">
+            <Loader2 size={22} className="animate-spin" />
+          </div>
+        ) : error ? (
+          <p className="mt-4 text-sm text-brand">{error}</p>
+        ) : (
+          <div className="mt-4 space-y-4 text-sm">
+            {/* Invited guests */}
+            <section>
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                <Mail size={13} /> Invited guests
+              </div>
+              {data?.invitees.length ? (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {data.invitees.map((e) => (
+                    <span key={e} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-ink">{e}</span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-muted">No invited guests recorded.</p>
+              )}
+            </section>
+
+            {/* Attendees */}
+            <section>
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                <Users size={13} /> Attendees
+              </div>
+              {data?.participants.length ? (
+                <ul className="mt-1.5 space-y-1">
+                  {data.participants.map((p, i) => (
+                    <li key={i} className="flex items-center gap-2 rounded-lg border border-border bg-bg px-2.5 py-1.5">
+                      <span className="text-sm text-ink">{p.name}</span>
+                      {p.email && <span className="text-xs text-muted">{p.email}</span>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-1 text-xs text-muted">No attendee report yet.</p>
+              )}
+            </section>
+
+            {/* AI summary */}
+            <section>
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+                <Sparkles size={13} /> Zoom AI summary
+              </div>
+              {data?.summary ? (
+                <div className="mt-1.5 space-y-2 rounded-lg border border-border bg-bg p-3">
+                  {data.summary.summary_overview && (
+                    <p className="whitespace-pre-wrap text-sm text-ink">{data.summary.summary_overview}</p>
+                  )}
+                  {data.summary.summary_details?.map((d, i) => (
+                    <div key={i}>
+                      {d.label && <div className="text-xs font-semibold text-ink">{d.label}</div>}
+                      {d.summary && <p className="whitespace-pre-wrap text-sm text-muted">{d.summary}</p>}
+                    </div>
+                  ))}
+                  {data.summary.next_steps && data.summary.next_steps.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold text-ink">Next steps</div>
+                      <ul className="ml-4 list-disc text-sm text-muted">
+                        {data.summary.next_steps.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-muted">No AI summary available for this meeting.</p>
+              )}
+            </section>
+
+            {data?.notes && data.notes.length > 0 && (
+              <div className="rounded-lg border border-border bg-surface-2/50 p-2.5 text-[0.7rem] text-muted">
+                {data.notes.map((n, i) => (
+                  <p key={i}>• {n}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function MeetingsPanel() {
   const { user, profile } = useAuth()
   const isAdmin = profile?.role === 'admin'
   const [meetings, setMeetings] = useState<Meeting[]>([])
   const [scheduling, setScheduling] = useState(false)
   const [editing, setEditing] = useState<Meeting | null>(null)
+  const [details, setDetails] = useState<Meeting | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
@@ -237,6 +372,13 @@ export function MeetingsPanel() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => setDetails(m)}
+            title="Details, attendees & AI summary"
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-brand"
+          >
+            <Info size={15} />
+          </button>
         </div>
         {!isPast && (
           <div className="mt-3 flex items-center gap-2">
@@ -318,6 +460,7 @@ export function MeetingsPanel() {
 
       {scheduling && <ScheduleModal onClose={() => setScheduling(false)} />}
       {editing && <ScheduleModal existing={editing} onClose={() => setEditing(null)} />}
+      {details && <DetailsModal meeting={details} onClose={() => setDetails(null)} />}
     </div>
   )
 }

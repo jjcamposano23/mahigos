@@ -209,6 +209,7 @@ export interface Meeting {
   startUrl?: string
   password?: string
   eventId?: string
+  invitees?: string[]
   createdBy: string
   createdByEmail?: string
   createdAt?: Timestamp
