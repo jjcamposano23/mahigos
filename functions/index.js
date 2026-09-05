@@ -34,7 +34,13 @@ const ALLOWED = [
   'gbbrutas@up.edu.ph',
   'ivmancenido@up.edu.ph',
 ]
-const TZ = 'Asia/Manila'
+const TZ = 'Asia/Singapore' // GMT+8 (Hong Kong / Taipei / Singapore)
+
+// Stamp a naive "YYYY-MM-DDTHH:mm[:ss]" as GMT+8 so Zoom and email agree.
+function withTZ(s) {
+  if (!s) return s
+  return /[Zz]|[+-]\d\d:?\d\d$/.test(s) ? s : `${s.length === 16 ? s + ':00' : s}+08:00`
+}
 
 // ─── Auth guard for callable functions ───────────────────────────────────────
 function assertAllowed(req) {
@@ -90,7 +96,7 @@ exports.createZoomMeeting = onCall(
     body: JSON.stringify({
       topic,
       type: 2, // scheduled meeting
-      start_time: startTime, // ISO 8601
+      start_time: withTZ(startTime), // ISO 8601 with explicit +08:00
       duration: duration || 60,
       timezone: timezone || TZ,
       agenda: agenda || '',
@@ -126,7 +132,7 @@ exports.createZoomMeeting = onCall(
     zoomId: String(m.id),
     topic,
     agenda: agenda || '',
-    startTime,
+    startTime: withTZ(startTime),
     duration: duration || 60,
     timezone: timezone || TZ,
     joinUrl: m.join_url,
@@ -141,7 +147,7 @@ exports.createZoomMeeting = onCall(
 
   // Email the invitees the join details from the OSEC Gmail.
   if (invitees.length) {
-    const when = new Date(startTime).toLocaleString('en-US', { timeZone: timezone || TZ })
+    const when = new Date(withTZ(startTime)).toLocaleString('en-US', { timeZone: timezone || TZ })
     const body = `
       <p style="margin:0 0 10px">You're invited to a Zoom meeting:</p>
       <div style="border-left:3px solid #ef3422;background:#fdece9;padding:10px 12px;border-radius:6px">
@@ -173,7 +179,7 @@ exports.updateZoomMeeting = onCall(
   const token = await zoomToken()
   const body = {
     topic,
-    start_time: startTime,
+    start_time: startTime ? withTZ(startTime) : undefined,
     duration,
     timezone: timezone || TZ,
     agenda,
@@ -188,7 +194,13 @@ exports.updateZoomMeeting = onCall(
     const t = await res.text()
     throw new HttpsError('internal', `Zoom update failed (${res.status}): ${t}`)
   }
-  const patch = { topic, startTime, duration, agenda, timezone: timezone || TZ }
+  const patch = {
+    topic,
+    startTime: startTime ? withTZ(startTime) : undefined,
+    duration,
+    agenda,
+    timezone: timezone || TZ,
+  }
   Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k])
   if (hasInvitees) patch.invitees = invitees
   await doc.ref.update(patch)
@@ -206,7 +218,7 @@ exports.updateZoomMeeting = onCall(
   const added = invitees.filter((e) => !prevInvitees.includes(e))
   if (added.length) {
     const m = doc.data()
-    const when = new Date(startTime || m.startTime).toLocaleString('en-US', { timeZone: timezone || TZ })
+    const when = new Date(withTZ(startTime || m.startTime)).toLocaleString('en-US', { timeZone: timezone || TZ })
     const html = `
       <p style="margin:0 0 10px">You have been invited to a Zoom meeting:</p>
       <div style="border-left:3px solid #ef3422;background:#fdece9;padding:10px 12px;border-radius:6px">
@@ -216,6 +228,14 @@ exports.updateZoomMeeting = onCall(
       </div>`
     await sendMail(added, `Zoom invite: ${topic || m.topic}`, shell('You are invited to a meeting', html)).catch(() => {})
   }
+  return { ok: true }
+})
+
+exports.archiveMeeting = onCall(async (req) => {
+  assertAllowed(req)
+  const { id, archived } = req.data || {}
+  if (!id) throw new HttpsError('invalid-argument', 'A meeting id is required.')
+  await db.collection('meetings').doc(id).update({ archived: !!archived })
   return { ok: true }
 })
 

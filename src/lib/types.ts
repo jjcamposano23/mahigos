@@ -211,6 +211,7 @@ export interface Meeting {
   password?: string
   eventId?: string
   invitees?: string[]
+  archived?: boolean
   createdBy: string
   createdByEmail?: string
   createdAt?: Timestamp

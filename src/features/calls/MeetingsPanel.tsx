@@ -15,6 +15,8 @@ import {
   Users,
   Sparkles,
   Mail,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react'
 import { db, functions } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
@@ -43,8 +45,16 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
   )
   const [duration, setDuration] = useState(existing?.duration ?? 60)
   const [agenda, setAgenda] = useState(existing?.agenda ?? '')
-  const [invitees, setInvitees] = useState((existing?.invitees ?? []).join(', '))
+  const [guests, setGuests] = useState<string[]>(existing?.invitees ?? [])
+  const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+
+  const draftValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(draft.trim())
+  const addGuest = () => {
+    const e = draft.trim().toLowerCase()
+    if (draftValid && !guests.includes(e)) setGuests((g) => [...g, e])
+    setDraft('')
+  }
   const [error, setError] = useState<string | null>(null)
   const isEdit = !!existing
 
@@ -54,6 +64,11 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
     setError(null)
     try {
       const startTime = `${date}T${time}:00`
+      // Fold any half-typed valid email into the list on submit.
+      const finalGuests =
+        draftValid && !guests.includes(draft.trim().toLowerCase())
+          ? [...guests, draft.trim().toLowerCase()]
+          : guests
       if (isEdit) {
         const update = httpsCallable(functions, 'updateZoomMeeting')
         await update({
@@ -62,8 +77,8 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
           startTime,
           duration,
           agenda: agenda.trim(),
-          timezone: 'Asia/Manila',
-          invitees,
+          timezone: 'Asia/Singapore',
+          invitees: finalGuests,
         })
       } else {
         const create = httpsCallable(functions, 'createZoomMeeting')
@@ -72,8 +87,8 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
           startTime,
           duration,
           agenda: agenda.trim(),
-          timezone: 'Asia/Manila',
-          invitees,
+          timezone: 'Asia/Singapore',
+          invitees: finalGuests,
         })
       }
       onClose()
@@ -144,15 +159,50 @@ function ScheduleModal({ existing, onClose }: { existing?: Meeting | null; onClo
           placeholder="What will you cover?"
         />
 
-        <label className="mt-3 block text-xs font-semibold text-muted">Invited guests (emails)</label>
-        <input
-          value={invitees}
-          onChange={(e) => setInvitees(e.target.value)}
-          className={field}
-          placeholder="name@email.com, another@email.com"
-        />
+        <label className="mt-3 block text-xs font-semibold text-muted">Invited guests</label>
+        <div className="mt-1 rounded-lg border border-border bg-bg p-2">
+          {guests.length > 0 && (
+            <div className="mb-1.5 flex flex-wrap gap-1.5">
+              {guests.map((g) => (
+                <span
+                  key={g}
+                  className="flex items-center gap-1 rounded-full bg-brand-soft py-0.5 pl-2.5 pr-1 text-xs font-medium text-brand"
+                >
+                  {g}
+                  <button
+                    onClick={() => setGuests((arr) => arr.filter((x) => x !== g))}
+                    className="grid h-4 w-4 place-items-center rounded-full hover:bg-brand/20"
+                    title="Remove"
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.key === 'Enter' || e.key === ',') && draftValid) {
+                e.preventDefault()
+                addGuest()
+              }
+            }}
+            className="w-full bg-transparent px-1 text-sm text-ink outline-none"
+            placeholder="Type an email, then click the tile below…"
+          />
+          {draftValid && !guests.includes(draft.trim().toLowerCase()) && (
+            <button
+              onClick={addGuest}
+              className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-brand/40 bg-surface px-2.5 py-1 text-xs font-medium text-brand transition hover:bg-brand-soft"
+            >
+              <Plus size={12} /> Add {draft.trim().toLowerCase()}
+            </button>
+          )}
+        </div>
         <span className="mt-1 block text-[0.7rem] text-muted">
-          Comma-separated. Newly added guests are emailed the join link from the OSEC account.
+          Newly added guests are emailed the join link from the OSEC account.
         </span>
 
         {error && <p className="mt-3 text-xs text-brand">{error}</p>}
@@ -325,17 +375,32 @@ export function MeetingsPanel() {
     )
   }, [])
 
+  const [showArchived, setShowArchived] = useState(false)
   const nowMs = Date.now()
-  const { upcoming, past } = useMemo(() => {
+  const { upcoming, past, archived } = useMemo(() => {
     const up: Meeting[] = []
     const pa: Meeting[] = []
+    const ar: Meeting[] = []
     for (const m of meetings) {
+      if (m.archived) {
+        ar.push(m)
+        continue
+      }
       const end = new Date(m.startTime).getTime() + (m.duration || 60) * 60000
       if (end >= nowMs) up.push(m)
       else pa.push(m)
     }
-    return { upcoming: up, past: pa.reverse() }
+    return { upcoming: up, past: pa.reverse(), archived: ar.reverse() }
   }, [meetings, nowMs])
+
+  const archive = async (m: Meeting, val: boolean) => {
+    try {
+      const fn = httpsCallable(functions, 'archiveMeeting')
+      await fn({ id: m.id, archived: val })
+    } catch {
+      /* ignore */
+    }
+  }
 
   const remove = async (m: Meeting) => {
     setDeleting(m.id)
@@ -349,7 +414,7 @@ export function MeetingsPanel() {
     }
   }
 
-  const card = (m: Meeting, isPast = false) => {
+  const card = (m: Meeting, isPast = false, isArchived = false) => {
     const canManage = isAdmin || m.createdBy === user?.uid
     return (
       <div
@@ -422,6 +487,25 @@ export function MeetingsPanel() {
             )}
           </div>
         )}
+        {isPast && canManage && (
+          <div className="mt-3 flex items-center justify-end gap-2 border-t border-border pt-2.5">
+            <button
+              onClick={() => archive(m, !isArchived)}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:border-brand/40 hover:text-brand"
+            >
+              {isArchived ? <ArchiveRestore size={13} /> : <Archive size={13} />}
+              {isArchived ? 'Unarchive' : 'Archive'}
+            </button>
+            <button
+              onClick={() => remove(m)}
+              disabled={deleting === m.id}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-muted transition hover:bg-brand-soft hover:text-brand disabled:opacity-50"
+            >
+              {deleting === m.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+              Delete
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -454,7 +538,21 @@ export function MeetingsPanel() {
       {past.length > 0 && (
         <>
           <h2 className="mt-8 text-xs font-semibold uppercase tracking-wide text-muted">Past</h2>
-          <div className="mt-3 space-y-2">{past.slice(0, 5).map((m) => card(m, true))}</div>
+          <div className="mt-3 space-y-2">{past.slice(0, 8).map((m) => card(m, true))}</div>
+        </>
+      )}
+
+      {archived.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="mt-8 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted transition hover:text-ink"
+          >
+            <Archive size={13} /> Archived ({archived.length}) {showArchived ? '▾' : '▸'}
+          </button>
+          {showArchived && (
+            <div className="mt-3 space-y-2">{archived.map((m) => card(m, true, true))}</div>
+          )}
         </>
       )}
 

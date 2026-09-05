@@ -79,10 +79,8 @@ export function AppShell() {
           <Outlet />
         </main>
 
-        <footer className="flex shrink-0 items-center justify-center gap-2 border-t border-border bg-surface px-4 py-1 text-[0.65rem] text-muted">
-          <span>Copyright &copy; 2026 UP Ibalon Alumni Association</span>
-          <span className="text-border">|</span>
-          <span>All Rights Reserved</span>
+        <footer className="flex shrink-0 items-center justify-center border-t border-border bg-surface px-4 py-1 text-[0.65rem] text-muted">
+          <span>Copyright &copy; 2026 UP Ibalon Alumni Association Inc. | All Rights Reserved</span>
         </footer>
       </div>
 
