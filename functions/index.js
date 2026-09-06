@@ -27,7 +27,7 @@ const ZOOM_CLIENT_ID = defineSecret('ZOOM_CLIENT_ID')
 const ZOOM_CLIENT_SECRET = defineSecret('ZOOM_CLIENT_SECRET')
 const GMAIL_APP_PASSWORD = defineSecret('GMAIL_APP_PASSWORD')
 const GROQ_API_KEY = defineSecret('GROQ_API_KEY')
-const AI_MODEL = 'llama-3.3-70b-versatile' // Groq, free tier, 128k context
+const AI_MODEL = 'openai/gpt-oss-120b' // Groq free tier, strong open model, 128k context
 
 const SENDER = 'upiaaosec@gmail.com'
 const ALLOWED = [
@@ -661,7 +661,8 @@ async function groqChat(system, userText) {
     body: JSON.stringify({
       model: AI_MODEL,
       temperature: 0.4,
-      max_tokens: 4096,
+      max_tokens: 6000,
+      reasoning_effort: 'low', // gpt-oss keeps chain-of-thought out of the answer
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: userText },
@@ -673,7 +674,8 @@ async function groqChat(system, userText) {
     throw new HttpsError('internal', `AI error (${res.status}): ${t.slice(0, 300)}`)
   }
   const data = await res.json()
-  return (data?.choices?.[0]?.message?.content || '').trim()
+  const msg = data?.choices?.[0]?.message || {}
+  return (msg.content || msg.reasoning || '').trim()
 }
 
 exports.mahigosAI = onCall({ secrets: [GROQ_API_KEY] }, async (req) => {
