@@ -4,9 +4,12 @@ import { LogOut, Menu, X, Mail, Shield, Briefcase, ChevronDown } from 'lucide-re
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { Avatar } from '../../components/Avatar'
+import { PresenceDot } from '../../components/PresenceDot'
+import { Clock } from '../../components/Clock'
 import { BicolSkyline } from '../../components/BicolMotifs'
 import { useAuth } from '../../context/AuthContext'
-import { startPresence } from '../../lib/presence'
+import { startPresence, presenceStatus, PRESENCE_META } from '../../lib/presence'
+import type { Availability } from '../../lib/types'
 import { NotificationBell } from '../notifications/NotificationBell'
 import { OnlineToaster } from '../notifications/OnlineToaster'
 import { RightDock } from '../dock/RightDock'
@@ -47,6 +50,8 @@ export function AppShell() {
             {mobileOpen ? <X size={18} /> : <Menu size={18} />}
           </button>
 
+          <Clock />
+
           <div className="flex-1" />
 
           <NotificationBell />
@@ -56,7 +61,10 @@ export function AppShell() {
             onClick={() => setProfileOpen(true)}
             className="flex items-center gap-2 rounded-lg border border-border bg-surface py-1 pl-1 pr-2 transition hover:border-brand/40"
           >
-            <Avatar profile={profile} size={28} />
+            <span className="relative">
+              <Avatar profile={profile} size={28} />
+              <PresenceDot member={profile} size={10} absolute />
+            </span>
             <span className="hidden text-left leading-tight sm:block">
               <span className="block text-xs font-semibold text-ink">{name}</span>
               <span className="block text-[0.65rem] capitalize text-muted">
@@ -91,10 +99,20 @@ export function AppShell() {
   )
 }
 
+const STATUS_OPTIONS: { a: Availability; label: string; color: string }[] = [
+  { a: 'available', label: 'Online', color: '#16c60c' },
+  { a: 'idle', label: 'Idle', color: '#f59e0b' },
+  { a: 'busy', label: 'Busy', color: '#ef4444' },
+  { a: 'offline', label: 'Offline', color: '#ffffff' },
+  { a: 'out', label: 'Out', color: '#8b5cf6' },
+]
+
 function ProfileDialog({ onClose }: { onClose: () => void }) {
-  const { profile, logout } = useAuth()
+  const { profile, logout, updateProfile } = useAuth()
   const navigate = useNavigate()
   const name = profile?.displayName ?? 'Member'
+  const st = presenceStatus(profile?.lastActive, profile?.availability, profile?.callState)
+  const auto = profile?.callState === 'meeting' || profile?.callState === 'presenting'
 
   const rows = [
     { icon: Mail, label: 'Email', value: profile?.email },
@@ -119,9 +137,47 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
               rounded="rounded-2xl"
               className="border-4 border-surface shadow-md"
             />
+            <PresenceDot member={profile} size={16} absolute className="!bottom-0 !right-0" />
           </div>
           <h2 className="font-display text-lg font-bold text-ink">{name}</h2>
-          <p className="text-xs text-muted">UP Ibalon</p>
+          <div className="mt-0.5 flex items-center gap-1.5 text-xs">
+            <PresenceDot member={profile} size={9} />
+            <span style={{ color: PRESENCE_META[st].color === '#ffffff' ? undefined : PRESENCE_META[st].color }} className="font-medium text-muted">
+              {PRESENCE_META[st].label}
+            </span>
+          </div>
+
+          {/* Status toggle */}
+          <div className="mt-3">
+            <div className="mb-1 text-[0.62rem] font-semibold uppercase tracking-wide text-muted">
+              Set your status
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {STATUS_OPTIONS.map((o) => {
+                const activeSel = (profile?.availability ?? 'available') === o.a
+                return (
+                  <button
+                    key={o.a}
+                    onClick={() => void updateProfile({ availability: o.a })}
+                    disabled={auto}
+                    title={auto ? 'You are in a call' : o.label}
+                    className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition disabled:opacity-50 ${
+                      activeSel ? 'border-brand bg-brand-soft text-brand' : 'border-border text-muted hover:text-ink'
+                    }`}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: o.color, boxShadow: '0 0 0 1px rgba(0,0,0,0.15)' }}
+                    />
+                    {o.label}
+                  </button>
+                )
+              })}
+            </div>
+            {auto && (
+              <p className="mt-1 text-[0.65rem] text-muted">Auto: you're in a call ({PRESENCE_META[st].label}).</p>
+            )}
+          </div>
 
           <dl className="mt-4 space-y-2.5">
             {rows.map(({ icon: Icon, label, value, cap }) => (

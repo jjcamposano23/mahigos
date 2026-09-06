@@ -45,6 +45,15 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Announcement images under announcements/{uid}/…
+    match /announcements/{uid}/{file=**} {
+      allow read: if allowed();
+      allow write: if allowed()
+        && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /{all=**} {
       allow read, write: if false;
     }

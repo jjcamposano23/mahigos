@@ -14,7 +14,6 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { ChevronLeft, Hash, Plus, MessageSquare, Pencil, Trash2, Check, X, Settings } from 'lucide-react'
 import { db, storage } from '../../lib/firebase'
 import { useAuth } from '../../context/AuthContext'
-import { presenceStatus, PRESENCE_META } from '../../lib/presence'
 import { mentionTargets, notify, notifyMentions } from '../../lib/notifications'
 import { toggledReactions } from '../messages/Reactions'
 import type { Availability, Channel, Message, UserProfile } from '../../lib/types'
@@ -22,16 +21,10 @@ import { MessageList } from '../messages/MessageList'
 import { Composer } from '../messages/Composer'
 import { UserHoverCard, TypingDots } from '../messages/UserHoverCard'
 import { Avatar } from '../../components/Avatar'
+import { PresenceDot } from '../../components/PresenceDot'
 
 function Dot({ member }: { member?: UserProfile }) {
-  const st = presenceStatus(member?.lastActive, member?.availability)
-  return (
-    <span
-      title={PRESENCE_META[st].label}
-      className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface"
-      style={{ background: PRESENCE_META[st].color }}
-    />
-  )
+  return <PresenceDot member={member} size={10} absolute />
 }
 
 export function MessagesDock() {

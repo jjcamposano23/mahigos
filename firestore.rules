@@ -94,10 +94,16 @@ service cloud.firestore {
       allow read, update, delete: if isAllowed() && resource.data.toUid == request.auth.uid;
     }
 
-    // Announcements — everyone reads; only admins post/edit/remove.
+    // Announcements — anyone allowlisted may post; author (or admin) edits.
     match /announcements/{id} {
-      allow read: if isAllowed();
-      allow create, update, delete: if isAdmin();
+      allow read, create: if isAllowed();
+      allow update, delete: if isAllowed()
+        && (resource.data.authorUid == request.auth.uid || isAdmin());
+      match /comments/{cid} {
+        allow read, create: if isAllowed();
+        allow update, delete: if isAllowed()
+          && (resource.data.authorUid == request.auth.uid || isAdmin());
+      }
     }
 
     // Shared calendar events

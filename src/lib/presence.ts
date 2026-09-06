@@ -28,27 +28,46 @@ export function isOnline(lastActive?: Timestamp | null): boolean {
 
 const IDLE_WINDOW_MS = 600_000 // 10 min → idle
 
-export type PresenceStatus = 'online' | 'idle' | 'offline' | 'out'
+export type PresenceStatus =
+  | 'online'
+  | 'idle'
+  | 'busy'
+  | 'offline'
+  | 'out'
+  | 'meeting'
+  | 'presenting'
 
-/** Combine the heartbeat with a member's manual availability into one status. */
+type Availability = 'available' | 'idle' | 'busy' | 'offline' | 'out'
+
+/** Combine heartbeat + manual availability + call state into one status. */
 export function presenceStatus(
   lastActive?: Timestamp | null,
-  availability?: 'available' | 'busy' | 'out',
+  availability?: Availability,
+  callState?: 'none' | 'meeting' | 'presenting',
 ): PresenceStatus {
+  const age = lastActive ? Date.now() - lastActive.toMillis() : Infinity
+  const online = age < ONLINE_WINDOW_MS
+  const fresh = age < IDLE_WINDOW_MS
+  // Automatic (in a call) states take precedence while the tab is active.
+  if (fresh && callState === 'presenting') return 'presenting'
+  if (fresh && callState === 'meeting') return 'meeting'
+  // Manual overrides
   if (availability === 'out') return 'out'
-  if (!lastActive) return 'offline'
-  const age = Date.now() - lastActive.toMillis()
-  if (age < ONLINE_WINDOW_MS) return 'online'
-  if (age < IDLE_WINDOW_MS) return 'idle'
+  if (availability === 'offline') return 'offline'
+  if (availability === 'busy') return fresh ? 'busy' : 'offline'
+  if (availability === 'idle') return fresh ? 'idle' : 'offline'
+  // Auto (available)
+  if (online) return 'online'
+  if (fresh) return 'idle'
   return 'offline'
 }
 
-export const PRESENCE_META: Record<
-  PresenceStatus,
-  { label: string; color: string }
-> = {
+export const PRESENCE_META: Record<PresenceStatus, { label: string; color: string }> = {
   online: { label: 'Online', color: '#16c60c' }, // bright green
   idle: { label: 'Idle', color: '#f59e0b' }, // orange
-  offline: { label: 'Offline', color: '#9ca3af' }, // grey
+  busy: { label: 'Busy', color: '#ef4444' }, // red
+  offline: { label: 'Offline', color: '#ffffff' }, // white
   out: { label: 'Out', color: '#8b5cf6' }, // violet
+  meeting: { label: 'In a meeting', color: '#ef4444' }, // red
+  presenting: { label: 'In a meeting · presenting', color: '#ef4444' }, // red + line
 }

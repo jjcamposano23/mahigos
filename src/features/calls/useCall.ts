@@ -252,6 +252,9 @@ export function useCall(
         { merge: true },
       )
 
+      // Reflect "in a meeting" on the user's presence.
+      void updateDoc(doc(db, 'users', uid), { callState: 'meeting' }).catch(() => {})
+
       // Register our participant record.
       await setDoc(partRef(), {
         uid,
@@ -315,6 +318,7 @@ export function useCall(
       pendingIceRef.current.clear()
       localRef.current?.getTracks().forEach((t) => t.stop())
       screenTrackRef.current?.stop()
+      void updateDoc(doc(db, 'users', uid), { callState: 'none' }).catch(() => {})
       // Best-effort presence cleanup; last one out ends the call.
       void (async () => {
         try {
@@ -369,6 +373,7 @@ export function useCall(
       swapVideoTrack(fallback)
       setSharing(false)
       void updateDoc(partRef(), { sharing: false }).catch(() => {})
+      void updateDoc(doc(db, 'users', uid), { callState: 'meeting' }).catch(() => {})
       return
     }
     try {
@@ -381,10 +386,12 @@ export function useCall(
         setSharing(false)
         screenTrackRef.current = null
         void updateDoc(partRef(), { sharing: false }).catch(() => {})
+        void updateDoc(doc(db, 'users', uid), { callState: 'meeting' }).catch(() => {})
       }
       swapVideoTrack(screen)
       setSharing(true)
       void updateDoc(partRef(), { sharing: true }).catch(() => {})
+      void updateDoc(doc(db, 'users', uid), { callState: 'presenting' }).catch(() => {})
     } catch {
       /* user cancelled the picker */
     }

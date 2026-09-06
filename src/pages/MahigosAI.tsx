@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot, getDocs } from 'firebase/firestore'
+import { addDoc, collection, onSnapshot, getDocs, serverTimestamp } from 'firebase/firestore'
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { httpsCallable } from 'firebase/functions'
 import {
   Sparkles,
@@ -12,7 +13,7 @@ import {
   Copy,
   Check,
 } from 'lucide-react'
-import { db, functions } from '../lib/firebase'
+import { db, functions, storage } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
 import type { Channel, Message, Project, Task } from '../lib/types'
 import { STATUS_COLUMNS } from '../lib/types'
@@ -152,6 +153,51 @@ export function MahigosAI() {
     setTimeout(() => setCopied(false), 1500)
   }
 
+  const [saveMsg, setSaveMsg] = useState('')
+  const [shareCh, setShareCh] = useState('')
+  const [shareMsg, setShareMsg] = useState('')
+
+  const saveToFiles = async () => {
+    if (!output || !profile) return
+    const blob = new Blob([output], { type: 'text/plain' })
+    const name = `Mahigos AI — ${active.label} — ${new Date().toLocaleDateString()}.txt`
+    const r = storageRef(storage, `library/${profile.uid}/${Date.now()}-ai.txt`)
+    await uploadBytes(r, blob)
+    const url = await getDownloadURL(r)
+    await addDoc(collection(db, 'documents'), {
+      title: name,
+      kind: 'file',
+      url,
+      provider: 'file',
+      fileName: name,
+      fileType: 'text/plain',
+      fileSize: blob.size,
+      projectId: null,
+      addedBy: profile.uid,
+      addedByName: profile.displayName,
+      createdAt: serverTimestamp(),
+    })
+    setSaveMsg('Saved to Files ✓')
+    setTimeout(() => setSaveMsg(''), 2500)
+  }
+
+  const shareToChannel = async () => {
+    if (!output || !profile || !shareCh) return
+    await addDoc(collection(db, 'channels', shareCh, 'messages'), {
+      text: output,
+      clipUrl: null,
+      clipType: null,
+      parentId: null,
+      authorUid: profile.uid,
+      authorName: profile.displayName,
+      authorAvatar: profile.avatar ?? null,
+      authorPhotoURL: profile.photoURL ?? null,
+      createdAt: serverTimestamp(),
+    })
+    setShareMsg('Shared ✓')
+    setTimeout(() => setShareMsg(''), 2500)
+  }
+
   const field = 'w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand'
   const active = MODES.find((m) => m.key === mode)!
 
@@ -262,6 +308,34 @@ export function MahigosAI() {
             </button>
           </div>
           <pre className="whitespace-pre-wrap break-words px-4 py-3 font-sans text-sm text-ink">{output}</pre>
+          <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5">
+            <button
+              onClick={() => void saveToFiles()}
+              className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-ink transition hover:border-brand/40"
+            >
+              <FileText size={13} /> Save to Files
+            </button>
+            <div className="flex items-center gap-1.5">
+              <select
+                value={shareCh}
+                onChange={(e) => setShareCh(e.target.value)}
+                className="rounded-lg border border-border bg-bg px-2 py-1.5 text-xs text-ink outline-none focus:border-brand"
+              >
+                <option value="">Share to channel…</option>
+                {channels.map((c) => (
+                  <option key={c.id} value={c.id}>#{c.name}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => void shareToChannel()}
+                disabled={!shareCh}
+                className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
+              >
+                Share
+              </button>
+            </div>
+            <span className="text-xs text-emerald-600">{saveMsg || shareMsg}</span>
+          </div>
         </div>
       )}
 

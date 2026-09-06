@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 300" width="480" height="300" role="img" aria-label="Mahigos AI mascot">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff3f1"/>
+      <stop offset="1" stop-color="#ffe4df"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff5843"/>
+      <stop offset="1" stop-color="#ef3422"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="480" height="300" rx="20" fill="url(#sky)"/>
+
+  <!-- Mayon volcano -->
+  <path d="M60 240 L150 120 L240 240 Z" fill="#f7c9c0"/>
+  <path d="M150 120 L172 152 L128 152 Z" fill="#ffffff" opacity="0.8"/>
+  <!-- second hill -->
+  <path d="M300 240 L370 150 L440 240 Z" fill="#fbd9d2"/>
+
+  <!-- ground -->
+  <rect x="0" y="238" width="480" height="62" rx="0" fill="#f6bcb2"/>
+
+  <!-- sparkles -->
+  <g fill="#ef3422">
+    <path d="M410 60 l6 14 14 6 -14 6 -6 14 -6 -14 -14 -6 14 -6z" opacity="0.9"/>
+    <path d="M70 70 l4 9 9 4 -9 4 -4 9 -4 -9 -9 -4 9 -4z" opacity="0.7"/>
+    <circle cx="360" cy="40" r="4" opacity="0.6"/>
+  </g>
+
+  <!-- robot -->
+  <g transform="translate(190 70)">
+    <!-- antenna -->
+    <line x1="55" y1="-6" x2="55" y2="-26" stroke="#1c1a19" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="55" cy="-30" r="7" fill="#ffd23f"/>
+    <!-- head/body -->
+    <rect x="0" y="0" width="110" height="96" rx="26" fill="url(#body)"/>
+    <!-- face screen -->
+    <rect x="16" y="20" width="78" height="50" rx="16" fill="#1c1a19"/>
+    <!-- eyes -->
+    <circle cx="42" cy="45" r="8" fill="#ffffff"/>
+    <circle cx="70" cy="45" r="8" fill="#ffffff"/>
+    <circle cx="44" cy="46" r="3.4" fill="#1c1a19"/>
+    <circle cx="72" cy="46" r="3.4" fill="#1c1a19"/>
+    <!-- smile -->
+    <path d="M40 58 q15 12 30 0" stroke="#ff8a7a" stroke-width="4" fill="none" stroke-linecap="round"/>
+    <!-- cheeks -->
+    <circle cx="26" cy="60" r="5" fill="#ff8a7a" opacity="0.6"/>
+    <circle cx="86" cy="60" r="5" fill="#ff8a7a" opacity="0.6"/>
+    <!-- little arms waving -->
+    <path d="M0 55 q-22 -6 -30 -26" stroke="url(#body)" stroke-width="9" fill="none" stroke-linecap="round"/>
+    <path d="M110 55 q22 -6 30 -26" stroke="url(#body)" stroke-width="9" fill="none" stroke-linecap="round"/>
+  </g>
+
+  <!-- speech sparkle -->
+  <g transform="translate(330 120)">
+    <rect x="0" y="0" width="96" height="54" rx="16" fill="#ffffff" stroke="#ef3422" stroke-width="3"/>
+    <path d="M18 54 l0 18 20 -18z" fill="#ffffff"/>
+    <text x="48" y="34" text-anchor="middle" font-family="Georgia, serif" font-size="26" fill="#ef3422">✦ Hi!</text>
+  </g>
+</svg>

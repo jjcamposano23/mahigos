@@ -2,11 +2,12 @@ import { useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Mail, Briefcase, Shield } from 'lucide-react'
 import { Avatar } from '../../components/Avatar'
+import { PresenceDot } from '../../components/PresenceDot'
 import { presenceStatus, PRESENCE_META } from '../../lib/presence'
 import type { UserProfile } from '../../lib/types'
 
 function lastSeen(member?: UserProfile) {
-  const st = presenceStatus(member?.lastActive, member?.availability)
+  const st = presenceStatus(member?.lastActive, member?.availability, member?.callState)
   if (st === 'online') return 'Active now'
   if (st === 'out') return 'Out of office'
   const ms = member?.lastActive?.toMillis?.()
@@ -30,7 +31,7 @@ export function UserHoverCard({
 }) {
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null)
   const ref = useRef<HTMLSpanElement>(null)
-  const st = presenceStatus(member?.lastActive, member?.availability)
+  const st = presenceStatus(member?.lastActive, member?.availability, member?.callState)
   const CARD_W = 256
   const CARD_H = 150
 
@@ -57,10 +58,7 @@ export function UserHoverCard({
             <div className="flex items-center gap-3">
               <span className="relative">
                 <Avatar profile={member} size={44} rounded="rounded-xl" />
-                <span
-                  className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-surface"
-                  style={{ background: PRESENCE_META[st].color }}
-                />
+                <PresenceDot member={member} size={13} absolute />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-ink">{member.displayName}</div>

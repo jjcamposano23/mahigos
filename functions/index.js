@@ -745,3 +745,4 @@ exports.mahigosAI = onCall({ secrets: [GROQ_API_KEY] }, async (req) => {
   const text = await groqChat(system, userText)
   return { text: text || '(The assistant returned no text.)' }
 })
+

@@ -10,8 +10,15 @@ export interface ScheduleBlock {
   room?: string
 }
 
-export type Availability = 'available' | 'busy' | 'out'
-export type PresenceStatus = 'online' | 'idle' | 'offline' | 'out'
+export type Availability = 'available' | 'idle' | 'busy' | 'offline' | 'out'
+export type PresenceStatus =
+  | 'online'
+  | 'idle'
+  | 'busy'
+  | 'offline'
+  | 'out'
+  | 'meeting'
+  | 'presenting'
 
 export interface UserProfile {
   uid: string
@@ -22,7 +29,8 @@ export interface UserProfile {
   photoURL?: string // uploaded avatar image
   avatar?: string // preset Bicol avatar id (see AVATAR_PRESETS)
   mustChangePassword?: boolean
-  availability?: Availability // manual status: available / busy / out
+  availability?: Availability // manual status
+  callState?: 'none' | 'meeting' | 'presenting' // auto: in a call / presenting
   // Student Assistant details (from UP Form 5)
   program?: string
   college?: string
@@ -47,8 +55,20 @@ export interface TaskComment {
 export interface Announcement {
   id: string
   text: string
+  imageUrl?: string
   authorUid: string
   authorName: string
+  edited?: boolean
+  createdAt?: Timestamp
+}
+
+export interface AnnouncementComment {
+  id: string
+  text: string
+  authorUid: string
+  authorName: string
+  authorAvatar?: string | null
+  authorPhotoURL?: string | null
   createdAt?: Timestamp
 }
 

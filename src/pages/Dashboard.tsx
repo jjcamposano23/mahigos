@@ -1,48 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  addDoc,
-  collection,
-  deleteDoc,
-  doc,
-  onSnapshot,
-  serverTimestamp,
-} from 'firebase/firestore'
-import {
-  Layers,
-  Clock,
-  Eye,
-  CheckCircle2,
-  ArrowRight,
-  CalendarDays,
-  BarChart3,
-  HeartHandshake,
-  Megaphone,
-  Send,
-  Trash2,
-} from 'lucide-react'
+import { collection, onSnapshot } from 'firebase/firestore'
+import { Layers, Clock, Eye, CheckCircle2, ArrowRight, CalendarDays, BarChart3 } from 'lucide-react'
 import { db } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
-import type { Announcement, CalendarEvent, Project, Task, UserProfile } from '../lib/types'
+import type { CalendarEvent, Project, Task } from '../lib/types'
 import { EVENT_META } from '../lib/types'
-import { notify } from '../lib/notifications'
 import { bikolGreeting } from '../lib/bikol'
 import { toISO } from '../lib/dates'
 import { PhotoCarousel } from '../components/PhotoCarousel'
 import { BICOL_PHOTO_SRCS } from '../lib/photos'
 import { isAssignedTo } from '../features/tasks/taskUtils'
+import { Announcements } from '../features/announcements/Announcements'
 
 export function Dashboard() {
   const { profile } = useAuth()
   const navigate = useNavigate()
-  const isAdmin = profile?.role === 'admin'
   const [tasks, setTasks] = useState<Task[]>([])
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [projects, setProjects] = useState<Project[]>([])
-  const [members, setMembers] = useState<UserProfile[]>([])
-  const [announcements, setAnnouncements] = useState<Announcement[]>([])
-  const [draft, setDraft] = useState('')
-  const [posting, setPosting] = useState(false)
 
   useEffect(() => {
     const unsubT = onSnapshot(collection(db, 'tasks'), (snap) =>
@@ -58,22 +34,10 @@ export function Dashboard() {
           .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
       ),
     )
-    const unsubU = onSnapshot(collection(db, 'users'), (snap) =>
-      setMembers(snap.docs.map((d) => ({ uid: d.id, ...(d.data() as Omit<UserProfile, 'uid'>) }))),
-    )
-    const unsubA = onSnapshot(collection(db, 'announcements'), (snap) =>
-      setAnnouncements(
-        snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Announcement, 'id'>) }))
-          .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0)),
-      ),
-    )
     return () => {
       unsubT()
       unsubE()
       unsubP()
-      unsubU()
-      unsubA()
     }
   }, [])
 
@@ -112,39 +76,6 @@ export function Dashboard() {
     },
   ]
 
-  const postAnnouncement = async () => {
-    const text = draft.trim()
-    if (!text || !profile) return
-    setPosting(true)
-    try {
-      await addDoc(collection(db, 'announcements'), {
-        text,
-        authorUid: profile.uid,
-        authorName: profile.displayName,
-        createdAt: serverTimestamp(),
-      })
-      // Notify everyone of the new announcement.
-      await Promise.all(
-        members
-          .filter((m) => m.uid !== profile.uid)
-          .map((m) =>
-            notify({
-              toUid: m.uid,
-              type: 'system',
-              title: '📣 New announcement',
-              body: text.slice(0, 100),
-              link: '/',
-              fromUid: profile.uid,
-              fromName: profile.displayName,
-            }),
-          ),
-      )
-      setDraft('')
-    } finally {
-      setPosting(false)
-    }
-  }
-
   const mine = tasks
     .filter((t) => !t.archived && isAssignedTo(t, profile?.uid) && t.status !== 'done')
     .slice(0, 5)
@@ -165,11 +96,6 @@ export function Dashboard() {
       })
       .filter((r) => r.total > 0)
   }, [projects, live])
-
-  // Collaboration / work-done snapshot for the whole team.
-  const completed = live.filter((t) => t.status === 'done').length
-  const inProgress = live.filter((t) => t.status === 'doing' || t.status === 'review').length
-  const overallPct = live.length ? Math.round((completed / live.length) * 100) : 0
 
   const firstName = (profile?.displayName ?? 'Ibaloney').split(' ')[0]
 
@@ -196,61 +122,8 @@ export function Dashboard() {
       </div>
 
       {/* Announcements */}
-      <div className="mt-6 rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border px-5 py-3">
-          <Megaphone size={17} className="text-brand" />
-          <h2 className="font-display text-base font-bold text-ink">Announcements</h2>
-        </div>
-        <div className="p-5">
-          {isAdmin && (
-            <div className="mb-4 flex items-end gap-2">
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                rows={2}
-                placeholder="Post an announcement or system update for the team…"
-                className="flex-1 resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-ink outline-none focus:border-brand"
-              />
-              <button
-                onClick={postAnnouncement}
-                disabled={posting || !draft.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-ink disabled:opacity-50"
-              >
-                <Send size={14} /> Post
-              </button>
-            </div>
-          )}
-          {announcements.length === 0 ? (
-            <p className="text-center text-sm text-muted">
-              {isAdmin ? 'No announcements yet — post the first one above.' : 'No announcements right now.'}
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {announcements.slice(0, 5).map((a) => (
-                <li
-                  key={a.id}
-                  className="group flex items-start gap-3 rounded-lg border-l-2 border-brand bg-brand-soft/40 px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="whitespace-pre-wrap break-words text-sm text-ink">{a.text}</p>
-                    <p className="mt-0.5 text-[0.65rem] text-muted">
-                      {a.authorName} · {a.createdAt ? new Date(a.createdAt.toMillis()).toLocaleString() : 'just now'}
-                    </p>
-                  </div>
-                  {isAdmin && (
-                    <button
-                      onClick={() => void deleteDoc(doc(db, 'announcements', a.id))}
-                      className="text-muted opacity-0 transition hover:text-brand group-hover:opacity-100"
-                      title="Remove"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <div className="mt-6">
+        <Announcements />
       </div>
 
       {/* Task bins */}
@@ -350,42 +223,6 @@ export function Dashboard() {
               ))}
             </ul>
           )}
-        </div>
-      </div>
-
-      {/* Collaboration snapshot */}
-      <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex items-center gap-2 border-b border-border px-5 py-4">
-          <HeartHandshake size={18} className="text-brand" />
-          <h2 className="font-display text-lg font-bold text-ink">Working together</h2>
-          <span className="ml-auto text-xs text-muted">Across all UP Ibalon projects</span>
-        </div>
-        <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4">
-          {[
-            { label: 'Tasks completed', value: completed, tint: '#2f8f6b' },
-            { label: 'In progress', value: inProgress, tint: '#2f6df0' },
-            { label: 'Active projects', value: projectProgress.length, tint: '#8b5cf6' },
-            { label: 'Overall progress', value: `${overallPct}%`, tint: '#ef3422' },
-          ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-border bg-bg p-4 text-center">
-              <div className="font-display text-2xl font-bold" style={{ color: s.tint }}>
-                {s.value}
-              </div>
-              <div className="mt-0.5 text-[0.7rem] font-medium text-muted">{s.label}</div>
-            </div>
-          ))}
-        </div>
-        <div className="px-5 pb-2">
-          <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-brand to-brand-ink transition-all"
-              style={{ width: `${overallPct}%` }}
-            />
-          </div>
-          <p className="mt-1.5 pb-3 text-center text-xs text-muted">
-            {completed} of {live.length} tasks done together — every bit of progress moves the
-            mission forward. 🌋
-          </p>
         </div>
       </div>
 
