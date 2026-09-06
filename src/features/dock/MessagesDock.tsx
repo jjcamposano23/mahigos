@@ -424,26 +424,25 @@ export function MessagesDock() {
         {dms.map((c) => {
           const other = memberMap[(c.members ?? []).find((u) => u !== user?.uid) ?? '']
           return (
-            <button
-              key={c.id}
-              onClick={() => setSelectedId(c.id)}
-              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-surface-2 hover:text-ink ${
-                (unread[c.id] ?? 0) > 0 ? 'font-semibold text-ink' : 'text-muted'
-              }`}
-            >
-              <span className="relative">
-                <Avatar profile={other ?? { displayName: '?' }} size={24} rounded="rounded-full" />
-                <Dot member={other} />
-              </span>
-              <UserHoverCard member={other}>
-                <span className="min-w-0 flex-1 truncate">{other?.displayName ?? 'Direct message'}</span>
-              </UserHoverCard>
-              {(unread[c.id] ?? 0) > 0 && (
-                <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-brand px-1 text-[0.65rem] font-bold text-white">
-                  {unread[c.id] > 9 ? '9+' : unread[c.id]}
+            <UserHoverCard key={c.id} member={other} className="block">
+              <button
+                onClick={() => setSelectedId(c.id)}
+                className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-surface-2 hover:text-ink ${
+                  (unread[c.id] ?? 0) > 0 ? 'font-semibold text-ink' : 'text-muted'
+                }`}
+              >
+                <span className="relative">
+                  <Avatar profile={other ?? { displayName: '?' }} size={24} rounded="rounded-full" />
+                  <Dot member={other} />
                 </span>
-              )}
-            </button>
+                <span className="min-w-0 flex-1 truncate">{other?.displayName ?? 'Direct message'}</span>
+                {(unread[c.id] ?? 0) > 0 && (
+                  <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-brand px-1 text-[0.65rem] font-bold text-white">
+                    {unread[c.id] > 9 ? '9+' : unread[c.id]}
+                  </span>
+                )}
+              </button>
+            </UserHoverCard>
           )
         })}
 

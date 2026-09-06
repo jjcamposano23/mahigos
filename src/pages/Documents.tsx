@@ -392,7 +392,7 @@ function EditModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-bold text-ink">Edit details</h2>
@@ -469,7 +469,7 @@ function LinkModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-bold text-ink">Add a link</h2>
@@ -523,7 +523,7 @@ function PreviewModal({ resource, onClose }: { resource: DocResource; onClose: (
   const pv = previewUrl(resource.url, resource.provider)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onMouseDown={onClose} />
       <div className="relative z-10 flex h-[85vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
           <span className="truncate text-sm font-semibold text-ink">{resource.title}</span>

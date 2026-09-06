@@ -19,7 +19,15 @@ function lastSeen(member?: UserProfile) {
 }
 
 /** Teams-style hover card, rendered in a portal so it's never clipped. */
-export function UserHoverCard({ member, children }: { member?: UserProfile; children: ReactNode }) {
+export function UserHoverCard({
+  member,
+  children,
+  className = 'inline-block',
+}: {
+  member?: UserProfile
+  children: ReactNode
+  className?: string
+}) {
   const [pos, setPos] = useState<{ left: number; top: number; above: boolean } | null>(null)
   const ref = useRef<HTMLSpanElement>(null)
   const st = presenceStatus(member?.lastActive, member?.availability)
@@ -37,12 +45,7 @@ export function UserHoverCard({ member, children }: { member?: UserProfile; chil
   }
 
   return (
-    <span
-      ref={ref}
-      className="inline-block"
-      onMouseEnter={show}
-      onMouseLeave={() => setPos(null)}
-    >
+    <span ref={ref} className={className} onMouseEnter={show} onMouseLeave={() => setPos(null)}>
       {children}
       {pos &&
         member &&

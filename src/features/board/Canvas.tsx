@@ -901,7 +901,7 @@ export function Canvas({ boardId }: { boardId: string }) {
 function ShapeLibrary({ onPick, onClose }: { onPick: (t: BoardItemType) => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div className="relative z-10 w-full max-w-md animate-rise rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-lg font-bold text-ink">Shapes &amp; elements</h2>

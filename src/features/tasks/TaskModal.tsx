@@ -138,7 +138,7 @@ export function TaskModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div className="relative z-10 max-h-[88vh] w-full max-w-lg animate-rise overflow-y-auto rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-start justify-between">
           <input

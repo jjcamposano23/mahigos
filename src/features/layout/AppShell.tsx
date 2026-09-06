@@ -104,7 +104,7 @@ function ProfileDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-end p-4">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/30" onMouseDown={onClose} />
       <div className="relative z-10 mt-14 w-full max-w-xs animate-rise overflow-hidden rounded-2xl border border-border bg-surface shadow-xl">
         {/* solid red header with subtle 2D Bicol vector art */}
         <div className="relative h-16 overflow-hidden bg-brand">
