@@ -30,7 +30,7 @@ const items: Item[] = [
   { to: '/files', label: 'Files', icon: FolderOpen },
   { to: '/whiteboard', label: 'Whiteboard', icon: PenTool },
   { to: '/meetings', label: 'Meetings', icon: Video },
-  { to: '/ai', label: 'Mahigos AI', icon: Sparkles, soon: true },
+  { to: '/ai', label: 'Mahigos AI', icon: Sparkles },
 ]
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {

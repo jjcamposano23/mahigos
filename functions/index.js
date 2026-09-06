@@ -26,6 +26,8 @@ const ZOOM_ACCOUNT_ID = defineSecret('ZOOM_ACCOUNT_ID')
 const ZOOM_CLIENT_ID = defineSecret('ZOOM_CLIENT_ID')
 const ZOOM_CLIENT_SECRET = defineSecret('ZOOM_CLIENT_SECRET')
 const GMAIL_APP_PASSWORD = defineSecret('GMAIL_APP_PASSWORD')
+const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY')
+const AI_MODEL = 'gemini-2.5-flash'
 
 const SENDER = 'upiaaosec@gmail.com'
 const ALLOWED = [
@@ -586,4 +588,97 @@ exports.onTaskChange = onDocumentWritten('tasks/{taskId}', async (event) => {
       })
     }
   }
+})
+
+// ─── Mahigos AI (Google Gemini) ──────────────────────────────────────────────
+const AI_SYSTEM = {
+  chat:
+    'You are Mahigos AI, the assistant for the UP Ibalon Alumni Association, Inc. (UPIAA) — a Bicolano UP alumni organization. Be concise, warm, and professional. Answer using the provided workspace context (projects, tasks, deadlines) when relevant; if the context does not contain the answer, say so briefly.',
+  summarize:
+    'You are Mahigos AI. Summarize the following conversation for a busy officer catching up. Give a short bulleted summary of the key points, decisions, and any action items with who is responsible. Keep it tight.',
+  draft:
+    'You are Mahigos AI, writing for the UP Ibalon Alumni Association, Inc. Draft the requested document (letter, memo, email, or announcement) in a clear, professional Filipino-organizational register. Use the details provided. Return only the drafted text.',
+  minutes: `You are Mahigos AI, Recording Secretary for the UP Ibalon Alumni Association, Inc. (UPIAA) Board of Directors.
+Draft the Minutes of the Meeting in the EXACT UPIAA house format below, filling in from the provided meeting details, attendees, Zoom AI summary, and any notes. Use formal, minutes-style prose (past tense, third person). Where information is missing, insert a clear placeholder like "[to be confirmed]".
+
+FORMAT:
+Minutes of the Meeting
+<Nth> Regular Meeting of the UPIAA Board of Directors
+<Date>
+<Time>, <Venue/Zoom>
+
+I. CALL TO ORDER
+The meeting was called to order at <time>. The following were present:
+<list attendees>
+
+II. DISCUSSION
+A. Approval of the Minutes of the Previous Meeting
+B. Approval of the Proposed Agenda
+C. Matters Arising from the Previous Meeting
+D. Matters for Approval
+   <numbered items with brief resolutions>
+E. Matters for Discussion
+F. Matters for Referendum
+G. Next Meeting
+
+Prepared by:
+<Executive Secretary name>
+Executive Secretary`,
+  agenda: `You are Mahigos AI, assisting the Office of the Executive Secretary of the UP Ibalon Alumni Association, Inc. (UPIAA).
+Draft a Board meeting AGENDA in the EXACT UPIAA house format below, organizing the user's supplied agenda points and details into the correct sections. Number matters logically (e.g., 8.01, 8.02).
+
+FORMAT:
+<Nth> Meeting of the UPIAA Board of Directors CY 2026-2028
+<Date>
+<Time>, <Venue/Zoom>
+
+AGENDA
+I. CALL TO ORDER
+II. PRAYER
+III. DETERMINATION OF QUORUM
+IV. APPROVAL OF THE MINUTES OF THE PREVIOUS MEETING
+V. APPROVAL OF THE PROPOSED AGENDA
+VI. MATTERS ARISING FROM THE PREVIOUS BOARD MEETING
+VII. MATTERS FOR APPROVAL
+VIII. MATTERS FOR DISCUSSION
+IX. MATTERS FOR DISCUSSION AND REFERENDUM
+X. MATTERS FOR RATIFICATION
+XI. OTHER MATTERS
+XII. ADJOURNMENT
+
+Prepared by:
+<Executive Secretary name>
+Executive Secretary`,
+}
+
+async function gemini(system, userText) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent?key=${GEMINI_API_KEY.value()}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: system }] },
+      contents: [{ role: 'user', parts: [{ text: userText }] }],
+      generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+    }),
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new HttpsError('internal', `Gemini error (${res.status}): ${t.slice(0, 300)}`)
+  }
+  const data = await res.json()
+  const parts = data?.candidates?.[0]?.content?.parts || []
+  return parts.map((p) => p.text || '').join('').trim()
+}
+
+exports.mahigosAI = onCall({ secrets: [GEMINI_API_KEY] }, async (req) => {
+  assertAllowed(req)
+  const { feature, prompt, context } = req.data || {}
+  const system = AI_SYSTEM[feature] || AI_SYSTEM.chat
+  const userText = [prompt || '', context ? `\n\n--- CONTEXT ---\n${context}` : '']
+    .join('')
+    .slice(0, 500000) // keep well under the context window
+  if (!userText.trim()) throw new HttpsError('invalid-argument', 'Nothing to send to the assistant.')
+  const text = await gemini(system, userText)
+  return { text: text || '(The assistant returned no text.)' }
 })

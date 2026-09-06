@@ -1,5 +1,4 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
-import { Sparkles } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import { LoadingScreen } from './components/LoadingScreen'
 import { RequireAuth } from './features/auth/RequireAuth'
@@ -14,8 +13,8 @@ import { Documents } from './pages/Documents'
 import { Whiteboard } from './pages/Whiteboard'
 import { Calls } from './pages/Calls'
 import { Meetings } from './pages/Meetings'
+import { MahigosAI } from './pages/MahigosAI'
 import { Settings } from './pages/Settings'
-import { ComingSoon } from './pages/ComingSoon'
 
 export default function App() {
   const { user, loading } = useAuth()
@@ -42,17 +41,7 @@ export default function App() {
           <Route path="/whiteboard" element={<Whiteboard />} />
           <Route path="/meetings" element={<Meetings />} />
           <Route path="/calls" element={<Calls />} />
-          <Route
-            path="/ai"
-            element={
-              <ComingSoon
-                title="Mahigos AI"
-                icon={Sparkles}
-                phase="Phase 6"
-                blurb="Your UP Ibalon AI assistant — summarize missed chats and long threads, draft documents, and answer questions about your projects."
-              />
-            }
-          />
+          <Route path="/ai" element={<MahigosAI />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
