@@ -255,6 +255,62 @@ exports.archiveMeeting = onCall(async (req) => {
   return { ok: true }
 })
 
+// List the Zoom AI Companion meeting summaries on the OSEC account.
+exports.listMeetingSummaries = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
+  assertAllowed(req)
+  const token = await zoomToken()
+  try {
+    const r = await fetch('https://api.zoom.us/v2/meetings/meeting_summaries?page_size=30', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!r.ok) {
+      return { summaries: [], note: `Could not list Zoom summaries (${r.status}). Needs AI Companion enabled and the meeting_summary:read:admin scope.` }
+    }
+    const d = await r.json()
+    const summaries = (d.summaries || [])
+      .map((s) => ({
+        id: String(s.meeting_id || ''),
+        uuid: s.meeting_uuid || '',
+        topic: s.meeting_topic || s.summary_title || 'Meeting',
+        start: s.meeting_start_time || s.summary_start_time || '',
+      }))
+      .filter((s) => s.id || s.uuid)
+    return { summaries }
+  } catch (e) {
+    return { summaries: [], note: 'Could not reach Zoom to list summaries.' }
+  }
+})
+
+// Fetch one Zoom AI summary (+ attendees) by Zoom meeting id / uuid.
+exports.getZoomSummary = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
+  assertAllowed(req)
+  const { id, uuid } = req.data || {}
+  if (!id && !uuid) throw new HttpsError('invalid-argument', 'A meeting id is required.')
+  const token = await zoomToken()
+  const auth = { Authorization: `Bearer ${token}` }
+  const out = { summary: null, participants: [], notes: [] }
+  try {
+    const r = await fetch(`https://api.zoom.us/v2/meetings/${encodeURIComponent(id || uuid)}/meeting_summary`, { headers: auth })
+    if (r.ok) out.summary = await r.json()
+    else out.notes.push(`Summary unavailable (${r.status}).`)
+  } catch {
+    out.notes.push('Could not load the summary.')
+  }
+  if (uuid) {
+    try {
+      const enc = encodeURIComponent(encodeURIComponent(uuid))
+      const r = await fetch(`https://api.zoom.us/v2/past_meetings/${enc}/participants?page_size=300`, { headers: auth })
+      if (r.ok) {
+        const d = await r.json()
+        out.participants = (d.participants || []).map((p) => ({ name: p.name || p.user_name || 'Guest', email: p.user_email || '' }))
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return out
+})
+
 exports.getMeetingDetails = onCall({ secrets: ZOOM_SECRETS }, async (req) => {
   assertAllowed(req)
   const { id } = req.data || {}

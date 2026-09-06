@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { collection, onSnapshot, query, orderBy, getDocs } from 'firebase/firestore'
+import { collection, onSnapshot, getDocs } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import {
   Sparkles,
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { db, functions } from '../lib/firebase'
 import { useAuth } from '../context/AuthContext'
-import type { Channel, Meeting, Message, Project, Task } from '../lib/types'
+import type { Channel, Message, Project, Task } from '../lib/types'
 import { STATUS_COLUMNS } from '../lib/types'
 
 type Mode = 'chat' | 'summarize' | 'minutes' | 'agenda' | 'draft'
@@ -35,7 +35,12 @@ export function MahigosAI() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [channels, setChannels] = useState<Channel[]>([])
-  const [meetings, setMeetings] = useState<Meeting[]>([])
+
+  type ZoomSummary = { id: string; uuid: string; topic: string; start: string }
+  const [summaries, setSummaries] = useState<ZoomSummary[]>([])
+  const [summariesNote, setSummariesNote] = useState<string | null>(null)
+  const [loadingSummaries, setLoadingSummaries] = useState(false)
+  const [summariesLoaded, setSummariesLoaded] = useState(false)
 
   const [input, setInput] = useState('')
   const [channelId, setChannelId] = useState('')
@@ -51,9 +56,28 @@ export function MahigosAI() {
     const u1 = onSnapshot(collection(db, 'tasks'), (s) => setTasks(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Task, 'id'>) }))))
     const u2 = onSnapshot(collection(db, 'projects'), (s) => setProjects(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Project, 'id'>) }))))
     const u3 = onSnapshot(collection(db, 'channels'), (s) => setChannels(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Channel, 'id'>) })).filter((c) => c.kind !== 'dm')))
-    const u4 = onSnapshot(query(collection(db, 'meetings'), orderBy('startTime', 'desc')), (s) => setMeetings(s.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Meeting, 'id'>) }))))
-    return () => { u1(); u2(); u3(); u4() }
+    return () => { u1(); u2(); u3() }
   }, [])
+
+  // Lazily pull the Zoom AI meeting summaries when the Minutes tab opens.
+  useEffect(() => {
+    if (mode !== 'minutes' || summariesLoaded) return
+    setLoadingSummaries(true)
+    ;(async () => {
+      try {
+        const res = await httpsCallable(functions, 'listMeetingSummaries')({})
+        const d = res.data as { summaries: ZoomSummary[]; note?: string }
+        setSummaries(d.summaries || [])
+        setSummariesNote(d.note ?? null)
+      } catch {
+        setSummariesNote('Could not load Zoom summaries.')
+      } finally {
+        setLoadingSummaries(false)
+        setSummariesLoaded(true)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode])
 
   const projectMap = useMemo(() => Object.fromEntries(projects.map((p) => [p.id, p.name])), [projects])
 
@@ -98,16 +122,16 @@ export function MahigosAI() {
         if (!context) throw new Error('That channel has no messages yet.')
       } else if (mode === 'minutes') {
         if (!meetingId) throw new Error('Pick a meeting.')
-        const mtg = meetings.find((m) => m.id === meetingId)
-        const details = await httpsCallable(functions, 'getMeetingDetails')({ id: meetingId })
-        const d = details.data as { participants?: { name: string }[]; summary?: { summary_overview?: string; summary_details?: { label?: string; summary?: string }[]; next_steps?: string[] } }
+        const sm = summaries.find((s) => s.id === meetingId)
+        const details = await httpsCallable(functions, 'getZoomSummary')({ id: sm?.id, uuid: sm?.uuid })
+        const d = details.data as { participants?: { name: string }[]; summary?: { summary_overview?: string; summary_details?: { label?: string; summary?: string }[]; next_steps?: string[] }; notes?: string[] }
         const attendees = (d.participants || []).map((p) => p.name).join(', ')
         const summaryText = d.summary
           ? [d.summary.summary_overview, ...(d.summary.summary_details || []).map((x) => `${x.label}: ${x.summary}`), (d.summary.next_steps || []).length ? `Next steps: ${(d.summary.next_steps || []).join('; ')}` : '']
               .filter(Boolean).join('\n')
           : '(No Zoom AI summary available for this meeting.)'
-        prompt = `Draft the minutes for the meeting "${mtg?.topic}".`
-        context = `Meeting: ${mtg?.topic}\nWhen: ${mtg ? new Date(mtg.startTime).toLocaleString() : ''}\nExecutive Secretary: ${profile?.displayName ?? ''}\nAttendees: ${attendees || '[to be confirmed]'}\n\nZoom AI summary:\n${summaryText}\n\nAdditional notes:\n${input.trim() || '(none)'}`
+        prompt = `Draft the minutes for the meeting "${sm?.topic}".`
+        context = `Meeting: ${sm?.topic}\nWhen: ${sm?.start ? new Date(sm.start).toLocaleString() : ''}\nExecutive Secretary: ${profile?.displayName ?? ''}\nAttendees: ${attendees || '[to be confirmed]'}\n\nZoom AI summary:\n${summaryText}\n\nAdditional notes:\n${input.trim() || '(none)'}`
       } else if (mode === 'agenda') {
         if (!ag.points.trim()) throw new Error('Add at least one agenda point.')
         prompt = 'Draft the Board meeting agenda.'
@@ -174,12 +198,21 @@ export function MahigosAI() {
 
         {mode === 'minutes' && (
           <>
-            <select value={meetingId} onChange={(e) => setMeetingId(e.target.value)} className={field}>
-              <option value="">Choose a meeting…</option>
-              {meetings.map((m) => (
-                <option key={m.id} value={m.id}>{m.topic} · {new Date(m.startTime).toLocaleDateString()}</option>
+            <select value={meetingId} onChange={(e) => setMeetingId(e.target.value)} className={field} disabled={loadingSummaries}>
+              <option value="">
+                {loadingSummaries ? 'Loading Zoom AI summaries…' : 'Choose a Zoom meeting summary…'}
+              </option>
+              {summaries.map((s) => (
+                <option key={s.id || s.uuid} value={s.id}>
+                  {s.topic}{s.start ? ` · ${new Date(s.start).toLocaleDateString()}` : ''}
+                </option>
               ))}
             </select>
+            {summariesLoaded && summaries.length === 0 && (
+              <p className="mt-1.5 text-[0.7rem] text-muted">
+                {summariesNote ?? 'No Zoom AI summaries found on the OSEC account yet. They appear here after a meeting with AI Companion enabled has ended and its summary is generated.'}
+              </p>
+            )}
             <textarea value={input} onChange={(e) => setInput(e.target.value)} rows={3} placeholder="Optional extra notes (attendance corrections, decisions, action items)…" className={`${field} mt-2`} />
           </>
         )}
