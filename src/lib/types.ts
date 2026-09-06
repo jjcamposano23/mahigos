@@ -159,6 +159,7 @@ export type BoardItemType =
   | 'arrow'
   | 'line'
   | 'image'
+  | 'draw'
 
 export interface BoardItem {
   id: string
@@ -171,13 +172,18 @@ export interface BoardItem {
   y2?: number
   text?: string
   src?: string // image url (type 'image')
+  points?: { x: number; y: number }[] // freehand path (type 'draw'), relative to x,y
+  penType?: 'pen' | 'marker' | 'highlighter'
   color: string
   fontFamily?: string
   fontSize?: number
   z?: number // stacking order
   opacity?: number // 0..1
-  thickness?: number // connector stroke width
+  thickness?: number // connector / pen stroke width
   dash?: 'solid' | 'dashed' | 'dotted'
+  borderWidth?: number // shape border width (0 = none)
+  borderColor?: string
+  borderDash?: 'solid' | 'dashed' | 'dotted'
   authorUid: string
 }
 

@@ -34,6 +34,9 @@ import {
   Copy,
   BringToFront,
   SendToBack,
+  Hand,
+  Pencil,
+  Square as SquareIcon,
   X,
 } from 'lucide-react'
 import { db, storage } from '../../lib/firebase'
@@ -52,7 +55,7 @@ import { ColorPopover } from './ColorPopover'
 
 const safeId = (c: string) => 'c' + c.replace(/[^a-z0-9]/gi, '')
 
-type Tool = 'select' | BoardItemType
+type Tool = 'select' | 'hand' | BoardItemType
 
 const CURSOR_COLORS = ['#ef3422', '#2f6df0', '#2f8f6b', '#e8a33d', '#8b5cf6', '#0ea5a4', '#db2777']
 function colorFor(uid: string) {
@@ -73,17 +76,26 @@ const DEFAULTS: Record<BoardItemType, { w: number; h: number; color: string }> =
   arrow: { w: 0, h: 0, color: '#1c1a19' },
   line: { w: 0, h: 0, color: '#1c1a19' },
   image: { w: 220, h: 160, color: '#ffffff' },
+  draw: { w: 0, h: 0, color: '#1c1a19' },
 }
 // Shapes that get drag-to-size on creation (not text/note/connectors/image).
 const DRAG_SHAPES: BoardItemType[] = ['rect', 'round', 'ellipse', 'diamond', 'triangle']
+const BORDER_SHAPES: BoardItemType[] = ['rect', 'round', 'ellipse', 'diamond', 'triangle', 'note']
 const DASH_MAP: Record<string, string | undefined> = {
   solid: undefined,
   dashed: '10 6',
   dotted: '2 6',
 }
+const PEN_TYPES: Record<string, { widthMul: number; opacity: number; cap: string }> = {
+  pen: { widthMul: 1, opacity: 1, cap: 'round' },
+  marker: { widthMul: 2.2, opacity: 1, cap: 'round' },
+  highlighter: { widthMul: 4, opacity: 0.4, cap: 'butt' },
+}
 
 const TOOLBAR: { tool: Tool; icon: typeof Square; label: string }[] = [
   { tool: 'select', icon: MousePointer2, label: 'Select (left-drag to marquee)' },
+  { tool: 'hand', icon: Hand, label: 'Move around the board (drag)' },
+  { tool: 'draw', icon: Pencil, label: 'Draw (freehand pen)' },
   { tool: 'note', icon: StickyNote, label: 'Sticky note' },
   { tool: 'rect', icon: Square, label: 'Rectangle' },
   { tool: 'ellipse', icon: Circle, label: 'Ellipse' },
@@ -117,6 +129,7 @@ type Interaction =
   | { mode: 'endpoint'; id: string; which: 'start' | 'end' }
   | { mode: 'draw'; id: string }
   | { mode: 'createShape'; id: string; ox: number; oy: number; type: BoardItemType }
+  | { mode: 'freehand'; id: string; ox: number; oy: number; pts: { x: number; y: number }[] }
 
 const bbox = (i: BoardItem) =>
   i.type === 'arrow' || i.type === 'line'
@@ -164,6 +177,8 @@ export function Canvas({ boardId }: { boardId: string }) {
   const [uploading, setUploading] = useState(false)
   const [colorOpen, setColorOpen] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)
+  const [style, setStyle] = useState<Partial<BoardItem>>({})
+  const [freehand, setFreehand] = useState<{ ox: number; oy: number; pts: { x: number; y: number }[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const it = useRef<Interaction>(null)
@@ -172,6 +187,8 @@ export function Canvas({ boardId }: { boardId: string }) {
   const targets = useMemo(() => mentionTargets(members), [members])
   const itemsRef = useRef<BoardItem[]>(items)
   itemsRef.current = items
+  const styleRef = useRef<Partial<BoardItem>>(style)
+  styleRef.current = style
 
   useEffect(() => {
     const unsubN = onSnapshot(col, (snap) =>
@@ -266,6 +283,13 @@ export function Canvas({ boardId }: { boardId: string }) {
     setSel(new Set())
   }
 
+  // Apply a style change to the current selection AND remember it as the
+  // default for the next element created (carry-over).
+  const applyStyle = (props: Partial<BoardItem>) => {
+    setStyle((s) => ({ ...s, ...props }))
+    itemsRef.current.filter((i) => sel.has(i.id)).forEach((s) => patch(s.id, props))
+  }
+
   const nextZ = () => Math.max(0, ...itemsRef.current.map((i) => i.z ?? 0)) + 1
 
   // Snap a connector endpoint to the nearest shape anchor.
@@ -327,22 +351,40 @@ export function Canvas({ boardId }: { boardId: string }) {
     const d = DEFAULTS[type]
     const z = nextZ()
     const uid = user?.uid ?? ''
+    const st = styleRef.current
+    const opt = (k: keyof BoardItem) => (st[k] != null ? { [k]: st[k] } : {})
     if (CONNECTORS.includes(type)) {
-      const refDoc = await addDoc(col, { type, x: wx, y: wy, w: 0, h: 0, x2: wx, y2: wy, text: '', color: '#1c1a19', thickness: 2.5, dash: 'solid', z, authorUid: uid })
+      const refDoc = await addDoc(col, {
+        type, x: wx, y: wy, w: 0, h: 0, x2: wx, y2: wy, text: '',
+        color: st.color ?? '#1c1a19', thickness: st.thickness ?? 2.5, dash: st.dash ?? 'solid',
+        ...opt('opacity'), z, authorUid: uid,
+      })
       it.current = { mode: 'draw', id: refDoc.id }
       setSel(new Set([refDoc.id]))
       return
     }
     // Shapes: start a drag-to-size gesture (click = default size on commit).
     if (DRAG_SHAPES.includes(type)) {
-      const refDoc = await addDoc(col, { type, x: Math.round(wx), y: Math.round(wy), w: 1, h: 1, text: '', color: d.color, z, authorUid: uid })
+      const refDoc = await addDoc(col, {
+        type, x: Math.round(wx), y: Math.round(wy), w: 1, h: 1, text: '',
+        color: st.color ?? d.color,
+        ...opt('opacity'), ...opt('borderWidth'), ...opt('borderColor'), ...opt('borderDash'),
+        ...opt('fontFamily'), ...opt('fontSize'), z, authorUid: uid,
+      })
       it.current = { mode: 'createShape', id: refDoc.id, ox: wx, oy: wy, type }
       setSel(new Set([refDoc.id]))
       return
     }
-    // Note / text — placed at default size (keep the tool active).
-    const refDoc = await addDoc(col, { type, x: Math.round(wx - d.w / 2), y: Math.round(wy - d.h / 2), w: d.w, h: d.h, text: '', color: d.color, z, authorUid: uid })
+    // Note / text — placed at default size, then revert to Select.
+    const refDoc = await addDoc(col, {
+      type, x: Math.round(wx - d.w / 2), y: Math.round(wy - d.h / 2), w: d.w, h: d.h, text: '',
+      color: st.color ?? d.color,
+      ...opt('opacity'), ...opt('fontFamily'), ...opt('fontSize'),
+      ...(type === 'note' ? { ...opt('borderWidth'), ...opt('borderColor'), ...opt('borderDash') } : {}),
+      z, authorUid: uid,
+    })
     setSel(new Set([refDoc.id]))
+    setTool('select')
     if (type === 'text' || type === 'note') setEditingId(refDoc.id)
   }
 
@@ -379,12 +421,20 @@ export function Canvas({ boardId }: { boardId: string }) {
 
   // ---------- container pointer handlers ----------
   const onContainerPointerDown = (e: React.PointerEvent) => {
-    // right button always pans
-    if (e.button === 2) {
+    // right button (or the hand tool) pans across the board
+    if (e.button === 2 || (e.button === 0 && tool === 'hand')) {
       it.current = { mode: 'pan', sx: e.clientX, sy: e.clientY, opx: pan.x, opy: pan.y }
       return
     }
     if (e.button !== 0) return
+    // The pencil can start anywhere, even over existing items.
+    if (tool === 'draw') {
+      const w = toWorld(e.clientX, e.clientY)
+      setEditingId(null)
+      setFreehand({ ox: w.x, oy: w.y, pts: [{ x: 0, y: 0 }] })
+      it.current = { mode: 'freehand', id: '', ox: w.x, oy: w.y, pts: [] }
+      return
+    }
     if (e.target !== containerRef.current && !(e.target as HTMLElement).dataset.world) return
     setEditingId(null)
     const w = toWorld(e.clientX, e.clientY)
@@ -394,7 +444,7 @@ export function Canvas({ boardId }: { boardId: string }) {
       setMarquee({ x: w.x, y: w.y, w: 0, h: 0 })
       return
     }
-    void create(tool, w.x, w.y)
+    void create(tool as BoardItemType, w.x, w.y)
   }
 
   const snapMove = (moving: BoardItem[], dx: number, dy: number) => {
@@ -500,6 +550,8 @@ export function Canvas({ boardId }: { boardId: string }) {
     } else if (cur?.mode === 'draw') {
       const p = snapEndpoint(w.x, w.y, cur.id)
       setItems((arr) => arr.map((i) => (i.id === cur.id ? { ...i, x2: p.x, y2: p.y } : i)))
+    } else if (cur?.mode === 'freehand') {
+      setFreehand((f) => (f ? { ...f, pts: [...f.pts, { x: w.x - f.ox, y: w.y - f.oy }] } : f))
     }
 
     const now = Date.now()
@@ -518,6 +570,33 @@ export function Canvas({ boardId }: { boardId: string }) {
     setDims(null)
     setGuides({ v: [], h: [] })
     if (!cur) return
+    if (cur.mode === 'freehand') {
+      const f = freehand
+      setFreehand(null)
+      setTool('select')
+      if (f && f.pts.length > 1) {
+        const xs = f.pts.map((p) => p.x)
+        const ys = f.pts.map((p) => p.y)
+        const minx = Math.min(...xs), miny = Math.min(...ys)
+        const maxx = Math.max(...xs), maxy = Math.max(...ys)
+        const pts = f.pts.map((p) => ({ x: p.x - minx, y: p.y - miny }))
+        const st = styleRef.current
+        void addDoc(col, {
+          type: 'draw',
+          x: f.ox + minx, y: f.oy + miny,
+          w: Math.max(1, maxx - minx), h: Math.max(1, maxy - miny),
+          points: pts,
+          color: st.color ?? '#1c1a19',
+          thickness: st.thickness ?? 3,
+          penType: st.penType ?? 'pen',
+          dash: st.dash ?? 'solid',
+          opacity: st.opacity ?? 1,
+          z: nextZ(),
+          authorUid: user?.uid ?? '',
+        })
+      }
+      return
+    }
     if (cur.mode === 'move') {
       for (const id of Object.keys(cur.orig)) {
         const c = items.find((i) => i.id === id)
@@ -534,9 +613,11 @@ export function Canvas({ boardId }: { boardId: string }) {
           patch(cur.id, { x: Math.round(cur.ox - d.w / 2), y: Math.round(cur.oy - d.h / 2), w: d.w, h: d.h })
         } else patch(cur.id, { x: c.x, y: c.y, w: c.w, h: c.h })
       }
+      setTool('select') // revert to select after creating
     } else if (cur.mode === 'endpoint' || cur.mode === 'draw') {
       const c = items.find((i) => i.id === cur.id)
       if (c) patch(cur.id, { x: c.x, y: c.y, x2: c.x2, y2: c.y2 })
+      if (cur.mode === 'draw') setTool('select') // revert after drawing a connector
     }
   }
 
@@ -614,15 +695,32 @@ export function Canvas({ boardId }: { boardId: string }) {
 
   const selArr = items.filter((i) => sel.has(i.id))
   const first = selArr[0]
-  const textLike =
-    selArr.length > 0 && selArr.every((i) => !CONNECTORS.includes(i.type) && i.type !== 'image')
   const connLike = selArr.length > 0 && selArr.every((i) => CONNECTORS.includes(i.type))
   const ordered = [...items].sort((a, b) => (a.z ?? 0) - (b.z ?? 0))
   const curSize = first?.fontSize ?? (first?.type === 'text' ? 16 : 14)
   const bumpSize = (delta: number) => {
     const n = Math.max(6, Math.min(400, curSize + delta))
-    selArr.forEach((s) => patch(s.id, { fontSize: n }))
+    applyStyle({ fontSize: n })
   }
+
+  // Dynamic grid: keep on-screen spacing near ~30px, doubling/halving as you
+  // zoom so the grid merges/unmerges like Miro.
+  const baseScreen = 26 * zoom
+  const gf = Math.pow(2, Math.round(Math.log2(30 / baseScreen)))
+  const gridPx = baseScreen * (Number.isFinite(gf) && gf > 0 ? gf : 1)
+  const surfaceCursor =
+    tool === 'hand' ? 'grab' : tool === 'select' ? 'default' : 'crosshair'
+
+  // Current style values (from the selection, else the carry-over defaults).
+  const g = <K extends keyof BoardItem>(k: K, fb: NonNullable<BoardItem[K]>): NonNullable<BoardItem[K]> =>
+    ((first ? first[k] : style[k]) ?? fb) as NonNullable<BoardItem[K]>
+  const creating = tool !== 'select' && tool !== 'hand'
+  const activeType: BoardItemType | undefined = first?.type ?? (creating ? (tool as BoardItemType) : undefined)
+  const showFont = !!activeType && !CONNECTORS.includes(activeType) && activeType !== 'image' && activeType !== 'draw'
+  const showBorder = !!activeType && BORDER_SHAPES.includes(activeType)
+  const showPen = activeType === 'draw'
+  const showConn = !!activeType && CONNECTORS.includes(activeType)
+  const showControls = selArr.length > 0 || creating
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -644,81 +742,47 @@ export function Canvas({ boardId }: { boardId: string }) {
         </button>
         <input ref={fileRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadImage(f) }} />
-        {selArr.length > 0 && (
+        {showControls && (
           <>
             <span className="mx-1 h-6 w-px bg-border" />
 
-            {/* Font + size for text-bearing items */}
-            {textLike && (
+            {/* Font + size */}
+            {showFont && (
               <>
                 <select
-                  value={first?.fontFamily ?? BOARD_FONTS[0].value}
-                  onChange={(e) => selArr.forEach((s) => patch(s.id, { fontFamily: e.target.value }))}
+                  value={g('fontFamily', BOARD_FONTS[0].value)}
+                  onChange={(e) => applyStyle({ fontFamily: e.target.value })}
                   title="Font"
                   className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
-                  style={{ fontFamily: first?.fontFamily ?? BOARD_FONTS[0].value }}
+                  style={{ fontFamily: g('fontFamily', BOARD_FONTS[0].value) }}
                 >
                   {BOARD_FONTS.map((f) => (
-                    <option key={f.label} value={f.value} style={{ fontFamily: f.value }}>
-                      {f.label}
-                    </option>
+                    <option key={f.label} value={f.value} style={{ fontFamily: f.value }}>{f.label}</option>
                   ))}
                 </select>
                 <div className="flex items-center rounded-lg border border-border">
-                  <button onClick={() => bumpSize(-2)} title="Smaller" className="grid h-8 w-6 place-items-center text-muted hover:text-ink">
-                    <ChevronDown size={14} />
-                  </button>
-                  <input
-                    type="number"
-                    list="wb-sizes"
-                    value={curSize}
-                    onChange={(e) => {
-                      const n = Number(e.target.value)
-                      if (n) selArr.forEach((s) => patch(s.id, { fontSize: Math.max(6, Math.min(400, n)) }))
-                    }}
-                    title="Font size (type a value)"
-                    className="h-8 w-11 bg-transparent text-center text-xs text-ink outline-none"
-                  />
-                  <button onClick={() => bumpSize(2)} title="Larger" className="grid h-8 w-6 place-items-center text-muted hover:text-ink">
-                    <ChevronUp size={14} />
-                  </button>
+                  <button onClick={() => bumpSize(-2)} title="Smaller" className="grid h-8 w-6 place-items-center text-muted hover:text-ink"><ChevronDown size={14} /></button>
+                  <input type="number" list="wb-sizes" value={curSize}
+                    onChange={(e) => { const n = Number(e.target.value); if (n) applyStyle({ fontSize: Math.max(6, Math.min(400, n)) }) }}
+                    title="Font size" className="h-8 w-11 bg-transparent text-center text-xs text-ink outline-none" />
+                  <button onClick={() => bumpSize(2)} title="Larger" className="grid h-8 w-6 place-items-center text-muted hover:text-ink"><ChevronUp size={14} /></button>
                 </div>
-                <datalist id="wb-sizes">
-                  {BOARD_FONT_SIZES.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
+                <datalist id="wb-sizes">{BOARD_FONT_SIZES.map((n) => <option key={n} value={n} />)}</datalist>
               </>
             )}
 
-            {/* Connector styling */}
-            {connLike && (
+            {/* Pen (freehand) */}
+            {showPen && (
               <>
-                <button
-                  onClick={() => selArr.forEach((s) => patch(s.id, { type: s.type === 'arrow' ? 'line' : 'arrow' }))}
-                  title="Toggle arrow / line"
-                  className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink"
-                >
-                  {first?.type === 'arrow' ? <MoveUpRight size={16} /> : <Minus size={16} />}
-                </button>
-                <select
-                  value={first?.thickness ?? 2.5}
-                  onChange={(e) => selArr.forEach((s) => patch(s.id, { thickness: Number(e.target.value) }))}
-                  title="Thickness"
-                  className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
-                >
-                  {[1, 2, 3, 4, 6, 8].map((n) => (
-                    <option key={n} value={n}>
-                      {n}px
-                    </option>
-                  ))}
+                <select value={g('penType', 'pen')} onChange={(e) => applyStyle({ penType: e.target.value as 'pen' | 'marker' | 'highlighter' })} title="Pen type" className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none">
+                  <option value="pen">Pen</option>
+                  <option value="marker">Marker</option>
+                  <option value="highlighter">Highlighter</option>
                 </select>
-                <select
-                  value={first?.dash ?? 'solid'}
-                  onChange={(e) => selArr.forEach((s) => patch(s.id, { dash: e.target.value as 'solid' | 'dashed' | 'dotted' }))}
-                  title="Line style"
-                  className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none"
-                >
+                <select value={g('thickness', 3)} onChange={(e) => applyStyle({ thickness: Number(e.target.value) })} title="Size" className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none">
+                  {[1, 2, 3, 5, 8, 12].map((n) => <option key={n} value={n}>{n}px</option>)}
+                </select>
+                <select value={g('dash', 'solid')} onChange={(e) => applyStyle({ dash: e.target.value as 'solid' | 'dashed' | 'dotted' })} title="Line style" className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none">
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
                   <option value="dotted">Dotted</option>
@@ -726,28 +790,56 @@ export function Canvas({ boardId }: { boardId: string }) {
               </>
             )}
 
+            {/* Connector styling */}
+            {showConn && (
+              <>
+                {connLike && (
+                  <button onClick={() => selArr.forEach((s) => patch(s.id, { type: s.type === 'arrow' ? 'line' : 'arrow' }))} title="Toggle arrow / line" className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink">
+                    {g('type', 'arrow') === 'arrow' ? <MoveUpRight size={16} /> : <Minus size={16} />}
+                  </button>
+                )}
+                <select value={g('thickness', 2.5)} onChange={(e) => applyStyle({ thickness: Number(e.target.value) })} title="Thickness" className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none">
+                  {[1, 2, 3, 4, 6, 8].map((n) => <option key={n} value={n}>{n}px</option>)}
+                </select>
+                <select value={g('dash', 'solid')} onChange={(e) => applyStyle({ dash: e.target.value as 'solid' | 'dashed' | 'dotted' })} title="Line style" className="h-8 rounded-lg border border-border bg-surface px-1.5 text-xs text-ink outline-none">
+                  <option value="solid">Solid</option>
+                  <option value="dashed">Dashed</option>
+                  <option value="dotted">Dotted</option>
+                </select>
+              </>
+            )}
+
+            {/* Border (shapes) */}
+            {showBorder && (
+              <div className="flex items-center gap-1 rounded-lg border border-border px-1" title="Border">
+                <SquareIcon size={13} className="text-muted" />
+                <select value={g('borderWidth', 1)} onChange={(e) => applyStyle({ borderWidth: Number(e.target.value) })} className="h-8 bg-transparent text-xs text-ink outline-none">
+                  {[0, 1, 2, 3, 4, 6].map((n) => <option key={n} value={n}>{n === 0 ? 'none' : `${n}px`}</option>)}
+                </select>
+                <select value={g('borderDash', 'solid')} onChange={(e) => applyStyle({ borderDash: e.target.value as 'solid' | 'dashed' | 'dotted' })} className="h-8 bg-transparent text-xs text-ink outline-none">
+                  <option value="solid">solid</option>
+                  <option value="dashed">dashed</option>
+                  <option value="dotted">dotted</option>
+                </select>
+                <input type="color" value={g('borderColor', '#94a3b8')} onChange={(e) => applyStyle({ borderColor: e.target.value })} title="Border color" className="h-6 w-6 cursor-pointer rounded border border-border bg-transparent" />
+              </div>
+            )}
+
             {/* Color */}
             <div className="relative">
-              <button
-                onClick={() => setColorOpen((v) => !v)}
-                title="Color"
-                className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink"
-              >
+              <button onClick={() => setColorOpen((v) => !v)} title="Color" className="grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-surface-2 hover:text-ink">
                 <Palette size={16} />
               </button>
               {colorOpen && (
-                <ColorPopover
-                  value={first?.color ?? '#1c1a19'}
-                  onChange={(c) => selArr.forEach((s) => patch(s.id, { color: c }))}
-                  onClose={() => setColorOpen(false)}
-                />
+                <ColorPopover value={g('color', '#1c1a19')} onChange={(c) => applyStyle({ color: c })} onClose={() => setColorOpen(false)} />
               )}
             </div>
 
-            <button onClick={() => del([...sel])} title="Delete"
-              className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand">
-              <Trash2 size={16} />
-            </button>
+            {selArr.length > 0 && (
+              <button onClick={() => del([...sel])} title="Delete" className="ml-1 grid h-8 w-8 place-items-center rounded-lg text-muted transition hover:bg-brand-soft hover:text-brand">
+                <Trash2 size={16} />
+              </button>
+            )}
           </>
         )}
       </div>
@@ -775,11 +867,11 @@ export function Canvas({ boardId }: { boardId: string }) {
         onPointerDownCapture={() => setMenu(null)}
         className="wb-grid absolute inset-0 select-none"
         style={{
-          cursor: tool === 'select' ? 'default' : 'crosshair',
+          cursor: surfaceCursor,
           backgroundColor: '#ffffff', // board stays white even in dark mode
-          ['--grid' as string]: '#e6e8ec',
+          ['--grid' as string]: '#eef0f3', // lighter grid
           backgroundPosition: `${pan.x}px ${pan.y}px`,
-          backgroundSize: `${26 * zoom}px ${26 * zoom}px`,
+          backgroundSize: `${gridPx}px ${gridPx}px`,
         } as React.CSSProperties}
       >
         <div data-world className="absolute left-0 top-0 origin-top-left" style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}>
@@ -804,12 +896,37 @@ export function Canvas({ boardId }: { boardId: string }) {
                 )}
               </g>
             ))}
+            {/* freehand drawings */}
+            {ordered.filter((i) => i.type === 'draw' && i.points).map((dr) => {
+              const pen = PEN_TYPES[dr.penType ?? 'pen']
+              const pts = dr.points!.map((p) => `${dr.x + p.x},${dr.y + p.y}`).join(' ')
+              const sw = (dr.thickness ?? 3) * pen.widthMul
+              return (
+                <g key={dr.id} style={{ opacity: (dr.opacity ?? 1) * pen.opacity }}>
+                  <polyline points={pts} fill="none" stroke="transparent" strokeWidth={Math.max(sw, 14)} className="pointer-events-auto cursor-move" onPointerDown={(e) => startMove(e as unknown as React.PointerEvent, dr)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setSel(new Set([dr.id])); setMenu({ x: e.clientX, y: e.clientY }) }} />
+                  <polyline points={pts} fill="none" stroke={dr.color} strokeWidth={sw} strokeLinecap={pen.cap as 'round' | 'butt'} strokeLinejoin="round" strokeDasharray={DASH_MAP[dr.dash ?? 'solid']} />
+                  {sel.has(dr.id) && <rect x={dr.x - 4} y={dr.y - 4} width={dr.w + 8} height={dr.h + 8} fill="none" stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />}
+                </g>
+              )
+            })}
+            {/* live freehand stroke */}
+            {freehand && (
+              <polyline
+                points={freehand.pts.map((p) => `${freehand.ox + p.x},${freehand.oy + p.y}`).join(' ')}
+                fill="none"
+                stroke={style.color ?? '#1c1a19'}
+                strokeWidth={(style.thickness ?? 3) * PEN_TYPES[style.penType ?? 'pen'].widthMul}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity={PEN_TYPES[style.penType ?? 'pen'].opacity}
+              />
+            )}
             {/* snap guides */}
             {guides.v.map((v, i) => <line key={'v' + i} x1={v} y1={-4000} x2={v} y2={4000} stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />)}
             {guides.h.map((h, i) => <line key={'h' + i} x1={-4000} y1={h} x2={4000} y2={h} stroke="var(--brand)" strokeWidth={1 / zoom} strokeDasharray="4 4" />)}
           </svg>
 
-          {ordered.filter((i) => !CONNECTORS.includes(i.type)).map((item) => (
+          {ordered.filter((i) => !CONNECTORS.includes(i.type) && i.type !== 'draw').map((item) => (
             <ItemView key={item.id} item={item} selected={sel.has(item.id)} editing={editingId === item.id} zoom={zoom}
               targets={targets}
               onPointerDown={(e) => startMove(e, item)}
@@ -988,11 +1105,17 @@ function ItemView({
 
   const style: React.CSSProperties = { left: item.x, top: item.y, width: item.w, height: item.h }
   const inner: React.CSSProperties = {}
+  const bColor = item.borderColor ?? 'rgba(0,0,0,.15)'
+  const bStyle = item.borderDash === 'dashed' ? 'dashed' : item.borderDash === 'dotted' ? 'dotted' : 'solid'
+  const border = (defaultW: number) => {
+    const w = item.borderWidth != null ? item.borderWidth : defaultW
+    inner.border = w > 0 ? `${w}px ${bStyle} ${bColor}` : 'none'
+  }
   let cls = 'overflow-hidden'
-  if (item.type === 'note') { cls = 'rounded-lg shadow-md'; inner.background = item.color }
-  else if (item.type === 'rect') { cls = 'border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
-  else if (item.type === 'round') { cls = 'rounded-2xl border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
-  else if (item.type === 'ellipse') { cls = 'rounded-full border'; inner.background = item.color; inner.borderColor = 'rgba(0,0,0,.15)' }
+  if (item.type === 'note') { cls = 'rounded-lg shadow-md'; inner.background = item.color; border(0) }
+  else if (item.type === 'rect') { cls = ''; inner.background = item.color; border(1) }
+  else if (item.type === 'round') { cls = 'rounded-2xl'; inner.background = item.color; border(1) }
+  else if (item.type === 'ellipse') { cls = 'rounded-full'; inner.background = item.color; border(1) }
   else if (isImage) { cls = 'rounded-lg overflow-hidden shadow-sm' }
   else if (isText) cls = 'rounded'
 
