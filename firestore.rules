@@ -29,6 +29,10 @@ service cloud.firestore {
       allow read: if isAllowed();
       allow create: if isAllowed() && request.auth.uid == uid;
       allow update, delete: if isAllowed() && (request.auth.uid == uid || isAdmin());
+      // Per-user unread counters (per channel/DM); each user owns theirs.
+      match /unread/{cid} {
+        allow read, write: if isAllowed() && request.auth.uid == uid;
+      }
     }
 
     // Shared task board + per-task review comments
@@ -44,10 +48,10 @@ service cloud.firestore {
       allow read, create, update, delete: if isAllowed();
     }
 
-    // Channels + direct messages, with their message subcollection
+    // Channels + direct messages, with messages + typing subcollections
     match /channels/{channelId} {
       allow read, create, update, delete: if isAllowed();
-      match /messages/{messageId} {
+      match /{sub}/{subId} {
         allow read, create, update, delete: if isAllowed();
       }
     }
@@ -88,6 +92,12 @@ service cloud.firestore {
     match /notifications/{noteId} {
       allow create: if isAllowed();
       allow read, update, delete: if isAllowed() && resource.data.toUid == request.auth.uid;
+    }
+
+    // Announcements — everyone reads; only admins post/edit/remove.
+    match /announcements/{id} {
+      allow read: if isAllowed();
+      allow create, update, delete: if isAdmin();
     }
 
     // Shared calendar events

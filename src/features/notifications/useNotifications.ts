@@ -36,8 +36,9 @@ export function useNotifications() {
   const unread = items.filter((i) => !i.read).length
 
   const markRead = (id: string) => updateDoc(doc(db, 'notifications', id), { read: true })
+  const setRead = (id: string, read: boolean) => updateDoc(doc(db, 'notifications', id), { read })
   const markAll = () =>
     Promise.all(items.filter((i) => !i.read).map((i) => updateDoc(doc(db, 'notifications', i.id), { read: true })))
 
-  return { items, unread, markRead, markAll }
+  return { items, unread, markRead, setRead, markAll }
 }

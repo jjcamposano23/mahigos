@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, AtSign, MessageSquare, Phone, CheckCheck, CalendarClock, KanbanSquare } from 'lucide-react'
+import { Bell, AtSign, MessageSquare, Phone, CheckCheck, CalendarClock, KanbanSquare, Circle, CheckCircle2 } from 'lucide-react'
 import { useNotifications } from './useNotifications'
 import type { AppNotification } from '../../lib/types'
 
@@ -25,7 +25,7 @@ const ICONS: Record<AppNotification['type'], typeof Bell> = {
 }
 
 export function NotificationBell() {
-  const { items, unread, markRead, markAll } = useNotifications()
+  const { items, unread, markRead, setRead, markAll } = useNotifications()
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const ref = useRef<HTMLDivElement>(null)
@@ -84,25 +84,33 @@ export function NotificationBell() {
               items.slice(0, 30).map((n) => {
                 const Icon = ICONS[n.type] ?? Bell
                 return (
-                  <button
+                  <div
                     key={n.id}
-                    onClick={() => openItem(n)}
-                    className={`flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-surface-2 ${
+                    className={`group flex w-full items-start gap-2 px-3 py-3 transition hover:bg-surface-2 ${
                       n.read ? '' : 'bg-brand-soft/40'
                     }`}
                   >
-                    <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
-                      <Icon size={14} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium text-ink">{n.title}</span>
-                      {n.body && <span className="mt-0.5 block truncate text-xs text-muted">{n.body}</span>}
-                      <span className="mt-0.5 block text-[0.65rem] text-muted">
-                        {timeAgo(n.createdAt?.toMillis?.())}
+                    <button
+                      onClick={() => void setRead(n.id, !n.read)}
+                      title={n.read ? 'Mark as unread' : 'Mark as read'}
+                      className="mt-0.5 shrink-0 text-muted transition hover:text-brand"
+                    >
+                      {n.read ? <CheckCircle2 size={18} className="text-emerald-500" /> : <Circle size={18} />}
+                    </button>
+                    <button onClick={() => openItem(n)} className="flex min-w-0 flex-1 items-start gap-2.5 text-left">
+                      <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-brand-soft text-brand">
+                        <Icon size={14} />
                       </span>
-                    </span>
-                    {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" />}
-                  </button>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-sm font-medium text-ink">{n.title}</span>
+                        {n.body && <span className="mt-0.5 block truncate text-xs text-muted">{n.body}</span>}
+                        <span className="mt-0.5 block text-[0.65rem] text-muted">
+                          {timeAgo(n.createdAt?.toMillis?.())}
+                        </span>
+                      </span>
+                      {!n.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" />}
+                    </button>
+                  </div>
                 )
               })
             )}

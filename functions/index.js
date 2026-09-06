@@ -9,7 +9,7 @@
  *        recent messages to every member.
  */
 const { onCall, HttpsError } = require('firebase-functions/v2/https')
-const { onDocumentWritten } = require('firebase-functions/v2/firestore')
+const { onDocumentWritten, onDocumentCreated } = require('firebase-functions/v2/firestore')
 const { onSchedule } = require('firebase-functions/v2/scheduler')
 const { setGlobalOptions } = require('firebase-functions/v2')
 const { defineSecret } = require('firebase-functions/params')
@@ -159,6 +159,20 @@ exports.createZoomMeeting = onCall(
     await sendMail(invitees, `Zoom invite: ${topic}`, shell('You are invited to a meeting', body)).catch(
       () => {},
     )
+  }
+
+  // Notify the team in-app of the new meeting.
+  try {
+    const uids = await allMemberUids()
+    await Promise.all(
+      uids
+        .filter((u) => u !== req.auth.uid)
+        .map((u) =>
+          pushNote(u, { type: 'meeting', title: 'New Zoom meeting scheduled', body: topic, link: '/meetings' }),
+        ),
+    )
+  } catch {
+    /* ignore */
   }
 
   return { id: docRef.id, joinUrl: m.join_url, startUrl: m.start_url }
@@ -328,6 +342,23 @@ async function memberEmails() {
   return Array.from(new Set(emails))
 }
 
+async function allMemberUids() {
+  const snap = await db.collection('users').get()
+  return snap.docs
+    .filter((d) => ALLOWED.includes(String(d.data().email || '').toLowerCase()))
+    .map((d) => d.id)
+}
+
+// Create an in-app notification document.
+function pushNote(toUid, note) {
+  return db.collection('notifications').add({
+    toUid,
+    read: false,
+    createdAt: FieldValue.serverTimestamp(),
+    ...note,
+  })
+}
+
 const APP_URL = 'https://mahigos-collab.web.app'
 
 function shell(title, bodyHtml) {
@@ -491,3 +522,68 @@ exports.dailyDigest = onSchedule(
     }
   },
 )
+
+// ─── Unread counters: increment per-recipient on each new message ────────────
+const STATUS_LABEL = {
+  backlog: 'Backlog',
+  todo: 'To Do',
+  doing: 'In Progress',
+  review: 'Review',
+  done: 'Done',
+}
+
+exports.onNewMessage = onDocumentCreated('channels/{cid}/messages/{mid}', async (event) => {
+  const m = event.data?.data()
+  if (!m || m.parentId) return // skip thread replies for unread counts
+  const cid = event.params.cid
+  const chSnap = await db.collection('channels').doc(cid).get()
+  if (!chSnap.exists) return
+  const ch = chSnap.data()
+  const recipients =
+    ch.kind === 'dm' ? ch.members || [] : await allMemberUids()
+  const batch = db.batch()
+  for (const uid of recipients) {
+    if (uid === m.authorUid) continue
+    batch.set(
+      db.collection('users').doc(uid).collection('unread').doc(cid),
+      { count: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    )
+  }
+  await batch.commit().catch(() => {})
+  await db.collection('channels').doc(cid).update({ lastMessageAt: FieldValue.serverTimestamp() }).catch(() => {})
+})
+
+// ─── Task notifications: assignment + status change ──────────────────────────
+exports.onTaskChange = onDocumentWritten('tasks/{taskId}', async (event) => {
+  const before = event.data.before.exists ? event.data.before.data() : null
+  const after = event.data.after.exists ? event.data.after.data() : null
+  if (!after || after.archived) return
+
+  const beforeUids = new Set(before?.assigneeUids || (before?.assigneeUid ? [before.assigneeUid] : []))
+  const afterUids = after.assigneeUids || (after.assigneeUid ? [after.assigneeUid] : [])
+
+  // Newly-assigned members
+  for (const uid of afterUids) {
+    if (!beforeUids.has(uid)) {
+      await pushNote(uid, {
+        type: 'task',
+        title: 'You were assigned a task',
+        body: after.title,
+        link: '/tasks',
+      })
+    }
+  }
+
+  // Status change → notify current assignees
+  if (before && before.status !== after.status) {
+    for (const uid of afterUids) {
+      await pushNote(uid, {
+        type: 'task',
+        title: `Task moved to ${STATUS_LABEL[after.status] || after.status}`,
+        body: after.title,
+        link: '/tasks',
+      })
+    }
+  }
+})

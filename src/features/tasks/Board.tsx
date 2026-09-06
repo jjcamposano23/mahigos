@@ -16,6 +16,7 @@ export function Board({
   tasks,
   memberMap,
   projectMap,
+  highlight = [],
   onMove,
   onOpen,
   onQuickAdd,
@@ -23,6 +24,7 @@ export function Board({
   tasks: Task[]
   memberMap: Record<string, UserProfile>
   projectMap: Record<string, Project>
+  highlight?: TaskStatus[]
   onMove: (id: string, status: TaskStatus) => void
   onOpen: (t: Task) => void
   onQuickAdd: (status: TaskStatus, title: string) => void
@@ -75,7 +77,11 @@ export function Board({
               setDragOver(null)
             }}
             className={`flex w-72 flex-col rounded-xl border bg-surface-2/50 transition ${
-              dragOver === col.key ? 'border-brand ring-2 ring-brand/25' : 'border-border'
+              highlight.includes(col.key)
+                ? 'animate-pulse border-brand bg-brand-soft/40 ring-2 ring-brand'
+                : dragOver === col.key
+                  ? 'border-brand ring-2 ring-brand/25'
+                  : 'border-border'
             }`}
           >
             <div className="flex items-center justify-between px-3 py-2.5">

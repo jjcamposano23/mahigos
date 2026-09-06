@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Trash2, Check, X } from 'lucide-react'
 import { Avatar } from '../../components/Avatar'
 import { ReactionBar } from './Reactions'
+import { UserHoverCard } from './UserHoverCard'
 import type { Message, UserProfile } from '../../lib/types'
 
 function timeOf(m: Message): number {
@@ -103,7 +104,11 @@ export function MessageList({
               <div className="min-w-0 flex-1">
                 {!grouped && (
                   <div className="flex items-baseline gap-2">
-                    <span className="text-sm font-semibold text-ink">{m.authorName}</span>
+                    <UserHoverCard member={author}>
+                      <span className="cursor-default text-sm font-semibold text-ink hover:underline">
+                        {m.authorName}
+                      </span>
+                    </UserHoverCard>
                     <span className="text-[0.68rem] text-muted">{hhmm(t)}</span>
                   </div>
                 )}

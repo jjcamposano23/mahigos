@@ -6,11 +6,13 @@ export function Composer({
   placeholder = 'Write a message…',
   onSendText,
   onSendClip,
+  onTyping,
   targets = [],
 }: {
   placeholder?: string
   onSendText: (text: string) => Promise<void> | void
   onSendClip: (blob: Blob) => Promise<void>
+  onTyping?: () => void
   targets?: MentionTarget[]
 }) {
   const [text, setText] = useState('')
@@ -134,6 +136,7 @@ export function Composer({
                 onChange={(e) => {
                   setText(e.target.value)
                   recompute(e.target.value, e.target.selectionStart)
+                  if (e.target.value) onTyping?.()
                 }}
                 onKeyUp={(e) => recompute(e.currentTarget.value, e.currentTarget.selectionStart)}
                 onKeyDown={(e) => {

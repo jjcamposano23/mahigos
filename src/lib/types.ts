@@ -44,6 +44,14 @@ export interface TaskComment {
   createdAt?: Timestamp
 }
 
+export interface Announcement {
+  id: string
+  text: string
+  authorUid: string
+  authorName: string
+  createdAt?: Timestamp
+}
+
 export interface AppNotification {
   id: string
   toUid: string

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   addDoc,
   collection,
@@ -29,6 +30,23 @@ export function Tasks() {
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [view, setView] = useState<ViewMode>('board')
   const [selected, setSelected] = useState<Task | null>(null)
+  const [highlight, setHighlight] = useState<TaskStatus[]>([])
+  const [params, setParams] = useSearchParams()
+
+  // Dashboard bins deep-link here with ?highlight=… → flash those columns 5s.
+  useEffect(() => {
+    const h = params.get('highlight')
+    if (!h) return
+    const all: TaskStatus[] = ['backlog', 'todo', 'doing', 'review', 'done']
+    const cols = h === 'all' ? all : (h.split(',') as TaskStatus[])
+    setView('board')
+    setHighlight(cols)
+    params.delete('highlight')
+    setParams(params, { replace: true })
+    const t = setTimeout(() => setHighlight([]), 5000)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const unsubT = onSnapshot(collection(db, 'tasks'), (snap) =>
@@ -222,6 +240,7 @@ export function Tasks() {
           tasks={visible}
           memberMap={memberMap}
           projectMap={projectMap}
+          highlight={highlight}
           onMove={move}
           onOpen={setSelected}
           onQuickAdd={quickAdd}
