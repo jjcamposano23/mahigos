@@ -348,7 +348,9 @@ export function MessagesDock() {
                     <Avatar profile={m} size={24} rounded="rounded-full" />
                     <Dot member={m} />
                   </span>
-                  {m.displayName}
+                  <UserHoverCard member={m}>
+                    <span>{m.displayName}</span>
+                  </UserHoverCard>
                 </button>
               ))}
           </div>
@@ -433,7 +435,9 @@ export function MessagesDock() {
                 <Avatar profile={other ?? { displayName: '?' }} size={24} rounded="rounded-full" />
                 <Dot member={other} />
               </span>
-              <span className="min-w-0 flex-1 truncate">{other?.displayName ?? 'Direct message'}</span>
+              <UserHoverCard member={other}>
+                <span className="min-w-0 flex-1 truncate">{other?.displayName ?? 'Direct message'}</span>
+              </UserHoverCard>
               {(unread[c.id] ?? 0) > 0 && (
                 <span className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-brand px-1 text-[0.65rem] font-bold text-white">
                   {unread[c.id] > 9 ? '9+' : unread[c.id]}

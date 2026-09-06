@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { Butanding, Mayon, Penafrancia, Pili, Sili } from './BicolMotifs'
 
 type MotifProps = { size?: number; className?: string }
@@ -51,14 +51,17 @@ export function Avatar({
   className?: string
 }) {
   const style = { width: size, height: size }
+  const [broken, setBroken] = useState(false)
+  useEffect(() => setBroken(false), [profile?.photoURL])
 
-  // 1) uploaded photo
-  if (profile?.photoURL) {
+  // 1) uploaded photo (falls back to preset/initials if it fails to load)
+  if (profile?.photoURL && !broken) {
     return (
       <img
         src={profile.photoURL}
         alt={profile.displayName ?? 'Avatar'}
         style={style}
+        onError={() => setBroken(true)}
         className={`${rounded} object-cover ${className}`}
       />
     )
