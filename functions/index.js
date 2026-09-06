@@ -26,8 +26,8 @@ const ZOOM_ACCOUNT_ID = defineSecret('ZOOM_ACCOUNT_ID')
 const ZOOM_CLIENT_ID = defineSecret('ZOOM_CLIENT_ID')
 const ZOOM_CLIENT_SECRET = defineSecret('ZOOM_CLIENT_SECRET')
 const GMAIL_APP_PASSWORD = defineSecret('GMAIL_APP_PASSWORD')
-const GEMINI_API_KEY = defineSecret('GEMINI_API_KEY')
-const AI_MODEL = 'gemini-2.5-flash'
+const GROQ_API_KEY = defineSecret('GROQ_API_KEY')
+const AI_MODEL = 'llama-3.3-70b-versatile' // Groq, free tier, 128k context
 
 const SENDER = 'upiaaosec@gmail.com'
 const ALLOWED = [
@@ -651,34 +651,39 @@ Prepared by:
 Executive Secretary`,
 }
 
-async function gemini(system, userText) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${AI_MODEL}:generateContent?key=${GEMINI_API_KEY.value()}`
-  const res = await fetch(url, {
+async function groqChat(system, userText) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${GROQ_API_KEY.value()}`,
+    },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: [{ text: userText }] }],
-      generationConfig: { temperature: 0.4, maxOutputTokens: 4096 },
+      model: AI_MODEL,
+      temperature: 0.4,
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userText },
+      ],
     }),
   })
   if (!res.ok) {
     const t = await res.text()
-    throw new HttpsError('internal', `Gemini error (${res.status}): ${t.slice(0, 300)}`)
+    throw new HttpsError('internal', `AI error (${res.status}): ${t.slice(0, 300)}`)
   }
   const data = await res.json()
-  const parts = data?.candidates?.[0]?.content?.parts || []
-  return parts.map((p) => p.text || '').join('').trim()
+  return (data?.choices?.[0]?.message?.content || '').trim()
 }
 
-exports.mahigosAI = onCall({ secrets: [GEMINI_API_KEY] }, async (req) => {
+exports.mahigosAI = onCall({ secrets: [GROQ_API_KEY] }, async (req) => {
   assertAllowed(req)
   const { feature, prompt, context } = req.data || {}
   const system = AI_SYSTEM[feature] || AI_SYSTEM.chat
   const userText = [prompt || '', context ? `\n\n--- CONTEXT ---\n${context}` : '']
     .join('')
-    .slice(0, 500000) // keep well under the context window
+    .slice(0, 120000) // keep within the model context window
   if (!userText.trim()) throw new HttpsError('invalid-argument', 'Nothing to send to the assistant.')
-  const text = await gemini(system, userText)
+  const text = await groqChat(system, userText)
   return { text: text || '(The assistant returned no text.)' }
 })

@@ -139,7 +139,7 @@ export function MahigosAI() {
         </span>
         <div>
           <h1 className="font-display text-xl font-bold text-ink">Mahigos AI</h1>
-          <p className="text-sm text-muted">Your UP Ibalon assistant — powered by Google Gemini.</p>
+          <p className="text-sm text-muted">Your UP Ibalon assistant — powered by Llama (Groq).</p>
         </div>
       </div>
 
